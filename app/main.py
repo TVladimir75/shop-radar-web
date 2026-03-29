@@ -13,6 +13,7 @@ from app.scoring import score_row, score_to_stars
 from app.scrapers.alibaba_scraper import fetch_suppliers as fetch_alibaba
 from app.scrapers.cn1688 import fetch_suppliers as fetch_1688
 from app.scrapers.mic import fetch_suppliers as fetch_mic
+from app.scrapers.taobao_scraper import fetch_suppliers as fetch_taobao
 from app.query_translate import prepare_query_for_platforms
 from app.site_meta import footer_context, landing_context, tool_href
 from app.suggestions import suggest as suggest_products
@@ -26,10 +27,11 @@ def _page_ctx(request: Request, **kwargs):
     return {**footer_context(), "page_base_url": base, **kwargs}
 
 SITES = [
-    {"id": "all", "label": "Все: MIC + Alibaba + 1688", "active": True},
+    {"id": "all", "label": "Все: MIC + Alibaba + 1688 + Taobao", "active": True},
     {"id": "mic", "label": "Made-in-China.com", "active": True},
     {"id": "alibaba", "label": "Alibaba.com (showroom)", "active": True},
     {"id": "1688", "label": "1688.com", "active": True},
+    {"id": "taobao", "label": "Taobao.com", "active": True},
 ]
 
 _SITE_IDS = {s["id"] for s in SITES}
@@ -145,23 +147,26 @@ async def _load_rows(product: str, site_id: str) -> tuple[list[dict], str | None
         merged = await fetch_alibaba(product, limit=35)
     elif site_id == "1688":
         merged = await fetch_1688(product, limit=30)
+    elif site_id == "taobao":
+        merged = await fetch_taobao(product, limit=30)
     elif site_id == "all":
-        for fn, label, lim in (
-            (fetch_mic, "Made-in-China", 18),
-            (fetch_alibaba, "Alibaba", 18),
-            (fetch_1688, "1688", 10),
+        for fn, label, lim, tmo in (
+            (fetch_mic, "Made-in-China", 18, None),
+            (fetch_alibaba, "Alibaba", 18, None),
+            (fetch_1688, "1688", 8, 16.0),
+            (fetch_taobao, "Taobao", 8, 14.0),
         ):
             try:
-                if label == "1688":
+                if tmo is not None:
                     part = await asyncio.wait_for(
-                        fn(product, limit=lim), timeout=16.0
+                        fn(product, limit=lim), timeout=tmo
                     )
                 else:
                     part = await fn(product, limit=lim)
                 merged.extend(part)
             except asyncio.TimeoutError:
                 notes.append(
-                    f"{label}: нет ответа за 16 с (часто недоступен вне Китая — остальные площадки уже в таблице)"
+                    f"{label}: нет ответа за {int(tmo or 0)} с (часто недоступен вне Китая — остальные площадки уже в таблице)"
                 )
             except Exception as e:
                 notes.append(f"{label}: {e!s}")

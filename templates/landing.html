@@ -191,10 +191,14 @@
 
   .platforms-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 1px;
     background: var(--border);
     border: 1px solid var(--border);
+  }
+
+  @media (max-width: 1100px) {
+    .platforms-grid { grid-template-columns: repeat(2, 1fr); }
   }
 
   .platform-card {
@@ -361,7 +365,7 @@
 <section class="hero">
   <div class="hero-inner">
     <h1>Найди <em>производителя</em><br>в Китае за 30 секунд</h1>
-    <p class="hero-sub">Поиск по Alibaba, Made-in-China и 1688. Сводная таблица поставщиков, рейтинг и подсказки. Запрос можно ввести по-русски — перед поиском он переводится для площадок.</p>
+    <p class="hero-sub">Поиск по Alibaba, Made-in-China, 1688 и Taobao. Сводная таблица, рейтинг и подсказки. Запрос можно ввести по-русски — перед поиском он переводится для площадок.</p>
     <div class="hero-actions">
       <a href="{{ tool_url }}" class="btn-primary">
         Перейти к поиску →
@@ -370,8 +374,8 @@
     </div>
     <div class="stats">
       <div>
-        <div class="stat-num">3</div>
-        <div class="stat-label">платформы сразу</div>
+        <div class="stat-num">4</div>
+        <div class="stat-label">площадки</div>
       </div>
       <div>
         <div class="stat-num">30с</div>
@@ -407,6 +411,11 @@
       <div class="platform-desc">Внутренняя китайская платформа — цены ниже, прямые производители. Доступна не всегда, но даёт уникальные результаты.</div>
       <div class="platform-tag">Только Китай</div>
     </div>
+    <div class="platform-card">
+      <div class="platform-name">Taobao</div>
+      <div class="platform-desc">Розничный маркетплейс Alibaba Group. Много магазинов и карточек товара; с облачных серверов выдача часто блокируется (капча), но в режиме «всё» вы не потеряете другие площадки.</div>
+      <div class="platform-tag">C2C / retail</div>
+    </div>
   </div>
 </section>
 
@@ -416,12 +425,12 @@
     <div class="how-step">
       <div class="step-num">01</div>
       <div class="step-title">Введите товар по-русски или по-английски</div>
-      <div class="step-desc">Например «диван» или LED — запрос подготовится для витрин MIC/Alibaba (словарь и перевод там, где нужно).</div>
+      <div class="step-desc">Например «диван» или LED — запрос подготовится для витрин (словарь и перевод там, где нужно).</div>
     </div>
     <div class="how-step">
       <div class="step-num">02</div>
       <div class="step-title">Выберите площадки</div>
-      <div class="step-desc">Ищите по всем трём сразу или выберите конкретную. Результаты с разных платформ объединяются в одну таблицу.</div>
+      <div class="step-desc">Ищите по всем четырём сразу или выберите конкретную. Результаты объединяются в одну таблицу.</div>
     </div>
     <div class="how-step">
       <div class="step-num">03</div>
