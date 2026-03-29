@@ -7,13 +7,19 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from app.scrapers.common import BROWSER_HEADERS, extract_json_assignment, slugify_alnum
+from app.scrapers.common import (
+    BROWSER_HEADERS,
+    extract_json_assignment,
+    normalize_product_query_for_slug,
+    slugify_alnum,
+)
 from app.scrapers.common import parse_usd_min_from_text as parse_usd_min
 
 ALIBABA_BASE = "https://www.alibaba.com"
 
 
 async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict]:
+    product_query = normalize_product_query_for_slug(product_query)
     slug = slugify_alnum(product_query)
     if not slug:
         slug = "product"

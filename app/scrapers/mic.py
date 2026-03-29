@@ -9,7 +9,11 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 import httpx
 
-from app.scrapers.common import BROWSER_HEADERS, parse_usd_min_from_text
+from app.scrapers.common import (
+    BROWSER_HEADERS,
+    normalize_product_query_for_slug,
+    parse_usd_min_from_text,
+)
 from app.scrapers.common import slugify_alnum as slugify
 
 MIC_BASE = "https://www.made-in-china.com"
@@ -165,6 +169,7 @@ def employee_hint(node) -> str | None:
 
 
 async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict]:
+    product_query = normalize_product_query_for_slug(product_query)
     slug = slugify(product_query)
     out: list[dict] = []
     seen: set[str] = set()

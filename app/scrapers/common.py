@@ -22,6 +22,78 @@ def slugify_alnum(text: str) -> str:
     return s or "product"
 
 
+# Русские запросы → ключевые слова для URL Made-in-China / Alibaba (латиница).
+# Длинные фразы выше — чтобы «солнцезащитные очки» не стало только «очки».
+_RU_EN_PHRASES: tuple[tuple[str, str], ...] = (
+    ("солнцезащитные очки", "sunglasses"),
+    ("очки для чтения", "reading glasses"),
+    ("оправа для очков", "eyeglass frames"),
+    ("оправы для очков", "eyeglass frames"),
+    ("очки", "eyeglasses"),
+    ("оправа", "eyeglass frames"),
+    ("контактные линзы", "contact lenses"),
+    ("наручные часы", "wrist watch"),
+    ("часы наручные", "wrist watch"),
+    ("наушники", "headphones"),
+    ("беспроводные наушники", "wireless headphones"),
+    ("зарядка телефона", "phone charger"),
+    ("смартфон", "smartphone"),
+    ("мобильный телефон", "mobile phone"),
+    ("ноутбук", "laptop"),
+    ("монитор", "computer monitor"),
+    ("клавиатура", "keyboard"),
+    ("компьютерная мышь", "computer mouse"),
+    ("мышь компьютерная", "computer mouse"),
+    ("принтер", "printer"),
+    ("кабель hdmi", "hdmi cable"),
+    ("перчатки рабочие", "work gloves"),
+    ("рабочие перчатки", "work gloves"),
+    ("перчатки", "gloves"),
+    ("респиратор", "respirator mask"),
+    ("маска медицинская", "medical mask"),
+    ("одноразовая маска", "disposable face mask"),
+    ("ботинки", "boots"),
+    ("кроссовки", "sneakers"),
+    ("крем для лица", "facial cream"),
+    ("помада", "lipstick"),
+    ("шампунь", "shampoo"),
+    ("рюкзак", "backpack"),
+    ("зонт", "umbrella"),
+    ("чемодан", "luggage suitcase"),
+    ("ковёр", "carpet rug"),
+    ("ковер", "carpet rug"),
+    ("шторы", "curtain"),
+    ("постельное бельё", "bedding set"),
+    ("постельное белье", "bedding set"),
+    ("подушка", "pillow"),
+    ("одеяло", "blanket"),
+    ("сумка женская", "handbag"),
+    ("сумка", "hand bag"),
+    ("ремень", "leather belt"),
+    ("украшения", "fashion jewelry"),
+    ("бижутерия", "costume jewelry"),
+)
+
+
+def normalize_product_query_for_slug(query: str) -> str:
+    """
+    MIC/Alibaba строят URL только из латиницы; чистая кириллица превращалась в slug «product»
+    и выдача становилась случайной (крепёж, оборудование и т.д.).
+    Подставляем известные RU→EN фрагменты; смешанный запрос с латиницей не трогаем.
+    """
+    q = (query or "").strip()
+    if not q:
+        return q
+    if slugify_alnum(q) != "product":
+        return q
+    out = q.lower().strip()
+    for ru, en in _RU_EN_PHRASES:
+        if ru in out:
+            out = out.replace(ru, en)
+    out = re.sub(r"\s+", " ", out).strip(" -")
+    return out or q
+
+
 def extract_json_assignment(html: str, var_name: str) -> dict | None:
     """Выдёргивает присваивание вида window.var = {...}; с учётом вложенных скобок."""
     needle = f"{var_name} = "

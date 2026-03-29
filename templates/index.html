@@ -4,13 +4,13 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Подбор поставщиков</title>
-  <link rel="stylesheet" href="/static/style.css"/>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}"/>
 </head>
 <body>
   <div class="wrap">
     <header class="head">
       <h1>Подбор поставщиков</h1>
-      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Работает в браузере по ссылке на этот компьютер.</p>
+      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
     </header>
 
     <form id="search-form" class="card" method="post" action="/search">
@@ -166,17 +166,22 @@
     </script>
 
     <footer class="foot-site">
-      <p class="foot-url-line">Открыто: <code>{{ page_base_url }}</code> · другие устройства: <code>SHOP_RADAR_HOST=0.0.0.0</code> в Терминале</p>
+      <p class="foot-url-line">
+        Открыто: <code>{{ page_base_url }}</code>
+        {% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %}
+        · в сети Wi‑Fi: <code>SHOP_RADAR_HOST=0.0.0.0</code> в Терминале
+        {% endif %}
+      </p>
     </footer>
-  </div>
 
-  <div class="foot-dev-strip" role="contentinfo">
-    <p class="foot-dev-text">
-      {{ footer_intro }} {{ footer_dev_name }}
-      (<a href="{{ footer_telegram_url }}" target="_blank" rel="noopener noreferrer">@{{ footer_telegram_handle }}</a>
-      <span class="foot-dev-sep">·</span>
-      <a href="{{ footer_bot_url }}" target="_blank" rel="noopener noreferrer" class="foot-bot-link" title="Telegram-бот">@{{ footer_bot_handle }}</a>)
-    </p>
+    <div class="foot-dev-strip foot-dev-fullbleed" role="contentinfo">
+      <p class="foot-dev-text">
+        {{ footer_intro }} {{ footer_dev_name }}
+        (<a href="{{ footer_telegram_url }}" target="_blank" rel="noopener noreferrer">@{{ footer_telegram_handle }}</a>
+        <span class="foot-dev-sep">·</span>
+        <a href="{{ footer_bot_url }}" target="_blank" rel="noopener noreferrer" class="foot-bot-link" title="Telegram-бот">@{{ footer_bot_handle }}</a>)
+      </p>
+    </div>
   </div>
 </body>
 </html>

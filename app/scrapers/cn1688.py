@@ -8,7 +8,11 @@ from urllib.parse import quote_plus, urlparse, urlunparse
 import httpx
 from bs4 import BeautifulSoup
 
-from app.scrapers.common import BROWSER_HEADERS, parse_usd_min_from_text
+from app.scrapers.common import (
+    BROWSER_HEADERS,
+    normalize_product_query_for_slug,
+    parse_usd_min_from_text,
+)
 
 SEARCH_URL = "https://s.1688.com/selloffer/offer_search.htm"
 
@@ -26,7 +30,7 @@ def _company_home(href: str) -> str:
 
 
 async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict]:
-    q = (product_query or "").strip() or "LED"
+    q = normalize_product_query_for_slug((product_query or "").strip()) or "LED"
     url = f"{SEARCH_URL}?keywords={quote_plus(q)}"
     headers = {
         **BROWSER_HEADERS,
