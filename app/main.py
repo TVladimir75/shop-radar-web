@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -29,6 +30,66 @@ SITES = [
     {"id": "alibaba", "label": "Alibaba.com (showroom)", "active": True},
     {"id": "1688", "label": "1688.com", "active": True},
 ]
+
+_SITE_IDS = {s["id"] for s in SITES}
+
+
+def _normalize_site_id(site_id: str) -> str:
+    s = (site_id or "all").strip()
+    return s if s in _SITE_IDS else "all"
+
+
+async def _render_search_page(
+    request: Request, product: str, site_id: str
+) -> HTMLResponse:
+    site_id = _normalize_site_id(site_id)
+    error: str | None = None
+    rows: list[dict] | None = None
+    merge_note: str | None = None
+
+    if not product:
+        error = "Введите, что ищете (например: LED street light)."
+    else:
+        try:
+            raw, merge_note = await _load_rows(product, site_id)
+            scored: list[dict] = []
+            for r in raw:
+                r = _normalize_row(r)
+                sc = score_row(
+                    has_audited=r["audited"],
+                    business_type=r.get("business_type"),
+                    has_region=bool(r.get("region")),
+                    has_employees=bool(r.get("employees")),
+                    name_len=len(r["name"]),
+                )
+                rs = max(1, min(5, int(score_to_stars(sc))))
+                scored.append(
+                    {**r, "rating": float(sc), "rating_stars": rs}
+                )
+            scored.sort(key=_result_sort_key)
+            rows = scored
+            if not rows:
+                error = (
+                    "Ничего не найдено. Попробуйте другие слова; на MIC/Alibaba на английском обычно лучше."
+                )
+        except ValueError as e:
+            error = str(e)
+        except Exception as e:
+            error = f"Не удалось загрузить данные: {e!s}"
+
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        _page_ctx(
+            request,
+            sites=SITES,
+            rows=rows,
+            query=product,
+            site_id=site_id,
+            error=error,
+            merge_note=merge_note,
+        ),
+    )
 
 
 def _normalize_row(r: dict) -> dict:
@@ -137,57 +198,31 @@ async def api_suggest(q: str = Query("", max_length=120)) -> JSONResponse:
     return JSONResponse({"items": items})
 
 
-@app.post("/search", response_class=HTMLResponse)
-async def search(
+@app.get("/search", response_class=HTMLResponse, name="search_page")
+async def search_get(
+    request: Request,
+    product: str = Query(""),
+    site_id: str = Query("all"),
+) -> HTMLResponse:
+    """Тот же поиск по URL (обновление страницы после POST больше не даёт 404)."""
+    return await _render_search_page(request, (product or "").strip(), site_id)
+
+
+@app.post("/search", response_model=None)
+async def search_post(
     request: Request,
     product: str = Form(""),
     site_id: str = Form("all"),
-) -> HTMLResponse:
+):
+    """
+    POST → редирект на GET с параметрами (PRG): в адресной строке /search?...,
+    повторное открытие и обновление не шлют POST без тела и не ломаются.
+    """
     product = (product or "").strip()
-    error: str | None = None
-    rows: list[dict] | None = None
-    merge_note: str | None = None
-
+    site_id = _normalize_site_id(site_id)
     if not product:
-        error = "Введите, что ищете (например: LED street light)."
-    else:
-        try:
-            raw, merge_note = await _load_rows(product, site_id)
-            scored: list[dict] = []
-            for r in raw:
-                r = _normalize_row(r)
-                sc = score_row(
-                    has_audited=r["audited"],
-                    business_type=r.get("business_type"),
-                    has_region=bool(r.get("region")),
-                    has_employees=bool(r.get("employees")),
-                    name_len=len(r["name"]),
-                )
-                rs = max(1, min(5, int(score_to_stars(sc))))
-                scored.append(
-                    {**r, "rating": float(sc), "rating_stars": rs}
-                )
-            scored.sort(key=_result_sort_key)
-            rows = scored
-            if not rows:
-                error = (
-                    "Ничего не найдено. Попробуйте другие слова; на MIC/Alibaba на английском обычно лучше."
-                )
-        except ValueError as e:
-            error = str(e)
-        except Exception as e:
-            error = f"Не удалось загрузить данные: {e!s}"
+        return await _render_search_page(request, "", site_id)
 
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        _page_ctx(
-            request,
-            sites=SITES,
-            rows=rows,
-            query=product,
-            site_id=site_id,
-            error=error,
-            merge_note=merge_note,
-        ),
-    )
+    loc = str(request.url_for("search_page"))
+    loc = f"{loc}?{urlencode({'product': product, 'site_id': site_id})}"
+    return RedirectResponse(loc, status_code=303)
