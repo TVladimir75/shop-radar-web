@@ -11,19 +11,22 @@ import httpx
 
 from app.scrapers.common import (
     BROWSER_HEADERS,
-    normalize_product_query_for_slug,
+    b2b_path_slug,
     parse_usd_min_from_text,
+    quote_path_segment,
 )
-from app.scrapers.common import slugify_alnum as slugify
 
 MIC_BASE = "https://www.made-in-china.com"
 HEADERS = BROWSER_HEADERS
 
 
 def listing_url(slug: str, page: int) -> str:
+    """slug может содержать кириллицу — кодируем для HTTP."""
     if page <= 1:
-        return f"{MIC_BASE}/manufacturers/{slug}.html"
-    return f"{MIC_BASE}/manufacturers/{slug}_{page}.html"
+        enc = quote_path_segment(slug)
+        return f"{MIC_BASE}/manufacturers/{enc}.html"
+    enc = quote_path_segment(f"{slug}_{page}")
+    return f"{MIC_BASE}/manufacturers/{enc}.html"
 
 
 def abs_url(href: str) -> str:
@@ -169,8 +172,7 @@ def employee_hint(node) -> str | None:
 
 
 async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict]:
-    product_query = normalize_product_query_for_slug(product_query)
-    slug = slugify(product_query)
+    slug = b2b_path_slug(product_query)
     out: list[dict] = []
     seen: set[str] = set()
     async with httpx.AsyncClient(

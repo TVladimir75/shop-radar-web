@@ -9,9 +9,9 @@ from bs4 import BeautifulSoup
 
 from app.scrapers.common import (
     BROWSER_HEADERS,
+    b2b_path_slug,
     extract_json_assignment,
-    normalize_product_query_for_slug,
-    slugify_alnum,
+    quote_path_segment,
 )
 from app.scrapers.common import parse_usd_min_from_text as parse_usd_min
 
@@ -19,11 +19,9 @@ ALIBABA_BASE = "https://www.alibaba.com"
 
 
 async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict]:
-    product_query = normalize_product_query_for_slug(product_query)
-    slug = slugify_alnum(product_query)
-    if not slug:
-        slug = "product"
-    url = f"{ALIBABA_BASE}/showroom/{slug}.html"
+    slug = b2b_path_slug(product_query)
+    enc = quote_path_segment(slug)
+    url = f"{ALIBABA_BASE}/showroom/{enc}.html"
     async with httpx.AsyncClient(
         timeout=45.0,
         follow_redirects=True,

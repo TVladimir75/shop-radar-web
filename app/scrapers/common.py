@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import quote
 
 CHROME_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -25,6 +26,8 @@ def slugify_alnum(text: str) -> str:
 # Русские запросы → ключевые слова для URL Made-in-China / Alibaba (латиница).
 # Длинные фразы выше — чтобы «солнцезащитные очки» не стало только «очки».
 _RU_EN_PHRASES: tuple[tuple[str, str], ...] = (
+    ("солнечная панель", "solar panel"),
+    ("солнечные панели", "solar panel"),
     ("солнцезащитные очки", "sunglasses"),
     ("очки для чтения", "reading glasses"),
     ("оправа для очков", "eyeglass frames"),
@@ -92,6 +95,35 @@ def normalize_product_query_for_slug(query: str) -> str:
             out = out.replace(ru, en)
     out = re.sub(r"\s+", " ", out).strip(" -")
     return out or q
+
+
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
+
+
+def b2b_path_slug(product_query: str) -> str:
+    """
+    Сегмент пути для MIC /showroom и Alibaba (без «product», если можно избежать).
+    1) Словарь RU→EN + латиница → eyeglasses / led / …
+    2) Иначе кириллица с дефисами («очки» → узкая выдача по оптике, а не общий /product/).
+    """
+    raw = (product_query or "").strip()
+    if not raw:
+        return "product"
+    normalized = normalize_product_query_for_slug(raw)
+    slug = slugify_alnum(normalized)
+    if slug != "product":
+        return slug
+    if _CYRILLIC_RE.search(raw):
+        seg = re.sub(r"[^\w\-]+", "-", raw.strip(), flags=re.UNICODE)
+        seg = re.sub(r"-+", "-", seg).strip("-").lower()
+        if seg:
+            return seg
+    return "product"
+
+
+def quote_path_segment(segment: str, *, safe: str = "-_") -> str:
+    """Кодирует сегмент пути (кириллица → %…), оставляя дефис и подчёркивание."""
+    return quote(segment, safe=safe)
 
 
 def extract_json_assignment(html: str, var_name: str) -> dict | None:
