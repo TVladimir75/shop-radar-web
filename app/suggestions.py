@@ -57,6 +57,12 @@ _RAW: tuple[tuple[str, str], ...] = (
     ("sunglasses", "солнцезащитные очки"),
     ("reading glasses", "очки для чтения"),
     ("eyeglass frames", "оправы для очков"),
+    ("jacket", "куртка"),
+    ("winter jacket", "зимняя куртка"),
+    ("leather jacket", "кожаная куртка"),
+    ("down jacket", "пуховик"),
+    ("jeans", "джинсы"),
+    ("t-shirt", "футболка"),
 )
 
 
