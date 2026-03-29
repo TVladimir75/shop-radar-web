@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shop Radar — Поиск поставщиков в Китае</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f2eb;
+    --bg2: #ede9e0;
+    --text: #1a1a18;
+    --text2: #5a5850;
+    --accent: #2a5c45;
+    --accent2: #3d7a5e;
+    --gold: #c4923a;
+    --border: #d8d4ca;
+    --white: #faf9f5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    font-weight: 400;
+    line-height: 1.65;
+    overflow-x: hidden;
+  }
+
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 4rem;
+    background: rgba(245,242,235,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.4rem;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+
+  .nav-logo span { color: var(--gold); }
+
+  .nav-cta {
+    background: var(--accent);
+    color: var(--white);
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    padding: 0.65rem 1.5rem;
+    transition: background 0.25s;
+  }
+
+  .nav-cta:hover { background: var(--accent2); }
+
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 7rem 4rem 4rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -100px; right: -100px;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(42,92,69,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    max-width: 680px;
+    animation: fadeUp 0.8s ease forwards;
+    opacity: 0;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.4rem 1rem;
+    margin-bottom: 2rem;
+    font-weight: 500;
+  }
+
+  .hero-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(3rem, 5.5vw, 5.5rem);
+    line-height: 1.05;
+    color: var(--text);
+    margin-bottom: 1.5rem;
+    font-weight: 400;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .hero-sub {
+    font-size: 1.1rem;
+    color: var(--text2);
+    max-width: 520px;
+    margin-bottom: 2.5rem;
+    line-height: 1.8;
+  }
+
+  .hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--accent);
+    color: var(--white);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    padding: 1rem 2rem;
+    transition: background 0.25s, gap 0.25s;
+  }
+
+  .btn-primary:hover { background: var(--accent2); gap: 1.2rem; }
+
+  .btn-secondary {
+    font-size: 0.82rem;
+    color: var(--text2);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 2px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .btn-secondary:hover { color: var(--accent); border-color: var(--accent); }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+    margin-top: 4rem;
+    padding-top: 2.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.5rem;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.78rem;
+    color: var(--text2);
+    letter-spacing: 0.5px;
+  }
+
+  .platforms {
+    padding: 5rem 4rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  .section-label {
+    font-size: 0.68rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 500;
+    margin-bottom: 3rem;
+  }
+
+  .platforms-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+
+  .platform-card {
+    background: var(--bg2);
+    padding: 2.5rem;
+    transition: background 0.25s;
+  }
+
+  .platform-card:hover { background: var(--white); }
+
+  .platform-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.4rem;
+    color: var(--text);
+    margin-bottom: 0.75rem;
+  }
+
+  .platform-desc {
+    font-size: 0.85rem;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+
+  .platform-tag {
+    display: inline-block;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.25rem 0.7rem;
+    margin-top: 1rem;
+  }
+
+  .how {
+    padding: 5rem 4rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .how-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3rem;
+    margin-top: 3rem;
+  }
+
+  .how-step {
+    position: relative;
+  }
+
+  .step-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 4rem;
+    color: var(--border);
+    line-height: 1;
+    margin-bottom: 1rem;
+  }
+
+  .step-title {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+  }
+
+  .step-desc {
+    font-size: 0.85rem;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+
+  .cta-section {
+    padding: 6rem 4rem;
+    border-top: 1px solid var(--border);
+    background: var(--accent);
+    text-align: center;
+  }
+
+  .cta-section h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    color: var(--white);
+    margin-bottom: 1rem;
+    font-weight: 400;
+  }
+
+  .cta-section p {
+    font-size: 1rem;
+    color: rgba(250,249,245,0.75);
+    margin-bottom: 2.5rem;
+  }
+
+  .btn-white {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--white);
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 1rem 2.5rem;
+    transition: gap 0.25s;
+  }
+
+  .btn-white:hover { gap: 1.2rem; }
+
+  footer {
+    padding: 2rem 4rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .footer-logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.1rem;
+    color: var(--accent);
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 2rem;
+  }
+
+  .footer-links a {
+    font-size: 0.78rem;
+    color: var(--text2);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .footer-links a:hover { color: var(--accent); }
+
+  .footer-copy {
+    font-size: 0.72rem;
+    color: var(--text2);
+  }
+
+  @media (max-width: 900px) {
+    nav { padding: 1rem 1.5rem; }
+    .hero { padding: 6rem 1.5rem 3rem; }
+    .platforms { padding: 3rem 1.5rem; }
+    .platforms-grid { grid-template-columns: 1fr; }
+    .how { padding: 3rem 1.5rem; }
+    .how-grid { grid-template-columns: 1fr; gap: 2rem; }
+    .cta-section { padding: 4rem 1.5rem; }
+    footer { padding: 1.5rem; flex-direction: column; }
+    .stats { grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">Shop<span>Radar</span></div>
+  <a href="{{ tool_url }}" class="nav-cta">Открыть инструмент →</a>
+</nav>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-badge">Бесплатно · Без регистрации</div>
+    <h1>Найди <em>производителя</em><br>в Китае за 30 секунд</h1>
+    <p class="hero-sub">Поиск по Alibaba, Made-in-China и 1688. Сводная таблица поставщиков, рейтинг и подсказки. Запрос можно ввести по-русски — перед поиском он переводится для площадок.</p>
+    <div class="hero-actions">
+      <a href="{{ tool_url }}" class="btn-primary">
+        Попробовать бесплатно →
+      </a>
+      <a href="#how" class="btn-secondary">Как это работает</a>
+    </div>
+    <div class="stats">
+      <div>
+        <div class="stat-num">3</div>
+        <div class="stat-label">платформы сразу</div>
+      </div>
+      <div>
+        <div class="stat-num">30с</div>
+        <div class="stat-label">ориентир времени</div>
+      </div>
+      <div>
+        <div class="stat-num">$0</div>
+        <div class="stat-label">сейчас бесплатно</div>
+      </div>
+      <div>
+        <div class="stat-num">RU</div>
+        <div class="stat-label">ввод по-русски</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="platforms">
+  <div class="section-label">Площадки</div>
+  <div class="platforms-grid">
+    <div class="platform-card">
+      <div class="platform-name">Alibaba</div>
+      <div class="platform-desc">Крупнейшая международная B2B платформа. Миллионы поставщиков, рейтинги по сделкам, верификация Gold Supplier.</div>
+      <div class="platform-tag">Международная</div>
+    </div>
+    <div class="platform-card">
+      <div class="platform-name">Made-in-China</div>
+      <div class="platform-desc">Специализированная B2B платформа с глубокой верификацией производителей. Аудиты, сертификаты, детальные профили.</div>
+      <div class="platform-tag">Производители</div>
+    </div>
+    <div class="platform-card">
+      <div class="platform-name">1688</div>
+      <div class="platform-desc">Внутренняя китайская платформа — цены ниже, прямые производители. Доступна не всегда, но даёт уникальные результаты.</div>
+      <div class="platform-tag">Только Китай</div>
+    </div>
+  </div>
+</section>
+
+<section class="how" id="how">
+  <div class="section-label">Как работает</div>
+  <div class="how-grid">
+    <div class="how-step">
+      <div class="step-num">01</div>
+      <div class="step-title">Введите товар по-русски или по-английски</div>
+      <div class="step-desc">Например «диван» или LED — запрос подготовится для витрин MIC/Alibaba (словарь и перевод там, где нужно).</div>
+    </div>
+    <div class="how-step">
+      <div class="step-num">02</div>
+      <div class="step-title">Выберите площадки</div>
+      <div class="step-desc">Ищите по всем трём сразу или выберите конкретную. Результаты с разных платформ объединяются в одну таблицу.</div>
+    </div>
+    <div class="how-step">
+      <div class="step-num">03</div>
+      <div class="step-title">Сравните поставщиков</div>
+      <div class="step-desc">Таблица сортируется по нашему рейтингу; в карточках — тип компании, регион, аудит и ссылки на сайты площадок.</div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-section">
+  <h2>Начните поиск прямо сейчас</h2>
+  <p>Бесплатно, без регистрации. Работает в браузере.</p>
+  <a href="{{ tool_url }}" class="btn-white">
+    Открыть Shop Radar →
+  </a>
+</section>
+
+<footer>
+  <div class="footer-logo">ShopRadar</div>
+  <div class="footer-links">
+    <a href="{{ tool_url }}">Инструмент</a>
+    <a href="{{ footer_bot_url }}" target="_blank" rel="noopener noreferrer">Telegram бот</a>
+    <a href="{{ brand_site_url }}" target="_blank" rel="noopener noreferrer">vt.com.kz</a>
+  </div>
+  <div class="footer-copy">© 2026 <a href="{{ brand_site_url }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none;">{{ footer_dev_name }}</a> · <a href="{{ footer_telegram_url }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none;">@{{ footer_telegram_handle }}</a></div>
+</footer>
+
+</body>
+</html>

@@ -14,7 +14,7 @@ from app.scrapers.alibaba_scraper import fetch_suppliers as fetch_alibaba
 from app.scrapers.cn1688 import fetch_suppliers as fetch_1688
 from app.scrapers.mic import fetch_suppliers as fetch_mic
 from app.query_translate import prepare_query_for_platforms
-from app.site_meta import footer_context
+from app.site_meta import footer_context, landing_context, tool_href
 from app.suggestions import suggest as suggest_products
 
 BASE = Path(__file__).resolve().parent.parent
@@ -49,7 +49,7 @@ async def _render_search_page(
     merge_note: str | None = None
 
     if not product:
-        error = "Введите, что ищете (например: LED street light)."
+        pass
     else:
         try:
             raw, merge_note = await _load_rows(product, site_id)
@@ -176,7 +176,15 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request) -> HTMLResponse:
+async def landing(request: Request) -> HTMLResponse:
+    """Лицевая страница; инструмент поиска — /tool."""
+    tool_rel = str(request.url_for("tool_home"))
+    ctx = {**landing_context(), "tool_url": tool_href(tool_rel)}
+    return templates.TemplateResponse(request, "landing.html", ctx)
+
+
+@app.get("/tool", response_class=HTMLResponse, name="tool_home")
+async def tool_home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
