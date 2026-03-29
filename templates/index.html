@@ -10,18 +10,18 @@
   <div class="wrap">
     <header class="head">
       <h1>Подбор поставщиков</h1>
-      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
+      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Можно писать по-русски: перед поиском запрос переводится в английский для площадок. Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
     </header>
 
     <form id="search-form" class="card" method="post" action="/search">
       <label class="field autocomplete">
-        <span>Что ищете (товар / тема) — подсказки при наборе</span>
+        <span>Что ищете (товар / тема) — подсказки при наборе; русский текст после паузы подставится на английский</span>
         <input
           id="product-input"
           type="text"
           name="product"
           value="{{ query or '' }}"
-          placeholder="Начните вводить: led, солнечн, насос…"
+          placeholder="Русский или English: очки, диван, LED…"
           autocomplete="off"
           required
         />
@@ -52,7 +52,8 @@
       <h2>Результаты: {{ rows|length }} компаний</h2>
       <p class="hint">
         <strong>Колонка «Цена · индекс»:</strong> слева — ориентир по минимальной цене в карточке (часто US&nbsp;$), справа/ниже — служебный балл площадки (MIC: уровень возможностей; Alibaba: звёзды по сделкам / Gold). Это не ваша закупочная цена.
-        Сортировка: сначала строки с большим числом звёзд в колонке «Рейтинг» (это наш упрощённый балл 1–★★★★★), затем по цене-ориентиру. Для MIC и Alibaba запрос <strong>латиницей</strong> обычно даёт лучшую выдачу (одежда → clothing).
+        Сортировка: сначала строки с большим числом звёзд в колонке «Рейтинг» (это наш упрощённый балл 1–★★★★★), затем по цене-ориентиру.         Для MIC и Alibaba запрос <strong>латиницей</strong> обычно даёт лучшую выдачу (одежда → clothing).
+        Составные английские фразы важны: <strong>furniture hardware</strong> — это фурнитура и крепёж, а не диваны; для диванов лучше <strong>sofa</strong> или <strong>wooden furniture</strong>.
         1688 часто недоступен вне Китая.
       </p>
       <div class="table-scroll">
@@ -144,14 +145,33 @@
       .then(function (d) { showItems(d.items || []); })
       .catch(function () { hide(); });
   }
+  var trT = null;
+  var trGen = 0;
+  var cyr = /[А-Яа-яЁё]/;
   input.addEventListener("input", function () {
     clearTimeout(t);
+    clearTimeout(trT);
     var q = input.value;
     if (q.length < 1) {
       load("");
       return;
     }
     t = setTimeout(function () { load(q); }, 220);
+    if (cyr.test(q) && q.trim().length >= 2) {
+      var g = ++trGen;
+      trT = setTimeout(function () {
+        var v = input.value.trim();
+        if (!cyr.test(v)) return;
+        fetch("/api/translate_query?q=" + encodeURIComponent(v))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (g !== trGen || !d.changed || !d.en) return;
+            input.value = d.en;
+            load(d.en);
+          })
+          .catch(function () {});
+      }, 950);
+    }
   });
   input.addEventListener("focus", function () {
     load(input.value || "");

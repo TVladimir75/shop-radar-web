@@ -75,6 +75,13 @@ _RU_EN_PHRASES: tuple[tuple[str, str], ...] = (
     ("ремень", "leather belt"),
     ("украшения", "fashion jewelry"),
     ("бижутерия", "costume jewelry"),
+    ("мебельная фурнитура", "furniture hardware"),
+    ("мягкая мебель", "upholstery furniture"),
+    ("диван", "sofa"),
+    ("диваны", "sofa"),
+    ("мебель", "home furniture"),
+    ("обеденный стол", "dining table"),
+    ("письменный стол", "office desk"),
 )
 
 

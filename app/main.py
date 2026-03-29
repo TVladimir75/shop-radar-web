@@ -13,6 +13,7 @@ from app.scoring import score_row, score_to_stars
 from app.scrapers.alibaba_scraper import fetch_suppliers as fetch_alibaba
 from app.scrapers.cn1688 import fetch_suppliers as fetch_1688
 from app.scrapers.mic import fetch_suppliers as fetch_mic
+from app.query_translate import prepare_query_for_platforms
 from app.site_meta import footer_context
 from app.suggestions import suggest as suggest_products
 
@@ -198,6 +199,17 @@ async def api_suggest(q: str = Query("", max_length=120)) -> JSONResponse:
     return JSONResponse({"items": items})
 
 
+@app.get("/api/translate_query")
+async def api_translate_query(q: str = Query("", max_length=300)) -> JSONResponse:
+    """Подстановка EN в строку поиска после паузы при вводе по-русски."""
+    raw = (q or "").strip()
+    if not raw:
+        return JSONResponse({"en": "", "changed": False})
+    en = await prepare_query_for_platforms(raw)
+    changed = en != raw
+    return JSONResponse({"en": en, "changed": changed})
+
+
 @app.get("/search", response_class=HTMLResponse, name="search_page")
 async def search_get(
     request: Request,
@@ -205,7 +217,10 @@ async def search_get(
     site_id: str = Query("all"),
 ) -> HTMLResponse:
     """Тот же поиск по URL (обновление страницы после POST больше не даёт 404)."""
-    return await _render_search_page(request, (product or "").strip(), site_id)
+    q = (product or "").strip()
+    if q:
+        q = await prepare_query_for_platforms(q)
+    return await _render_search_page(request, q, site_id)
 
 
 @app.post("/search", response_model=None)
@@ -222,6 +237,8 @@ async def search_post(
     site_id = _normalize_site_id(site_id)
     if not product:
         return await _render_search_page(request, "", site_id)
+
+    product = await prepare_query_for_platforms(product)
 
     loc = str(request.url_for("search_page"))
     loc = f"{loc}?{urlencode({'product': product, 'site_id': site_id})}"
