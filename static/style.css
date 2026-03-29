@@ -1,0 +1,174 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f0f4f8;
+  color: #1a202c;
+  line-height: 1.5;
+}
+.wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+.head h1 { margin: 0 0 8px; font-size: 1.75rem; }
+.lead { margin: 0; color: #4a5568; font-size: 1rem; }
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.field { display: block; margin-bottom: 16px; }
+.field.autocomplete { position: relative; }
+.field span { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
+.field input, .field select {
+  width: 100%;
+  max-width: 100%;
+  padding: 12px 14px;
+  font-size: 1rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+}
+.btn {
+  background: #3182ce;
+  color: #fff;
+  border: none;
+  padding: 14px 24px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn:hover { background: #2c5282; }
+.alert {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: 8px;
+  color: #c53030;
+}
+.results h2 { margin-top: 0; font-size: 1.2rem; }
+.hint { font-size: 0.88rem; color: #718096; margin-bottom: 16px; }
+.table-scroll { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+th, td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+th { background: #edf2f7; font-weight: 600; }
+tr.top { background: #f0fff4; }
+.num { font-weight: 700; color: #276749; white-space: nowrap; }
+.stars-cell { white-space: nowrap; vertical-align: middle; }
+.star-row { letter-spacing: 0.02em; font-size: 1.05rem; line-height: 1; }
+.star.on { color: #d69e2e; }
+.star.off { color: #cbd5e0; }
+.snip { font-size: 0.8rem; color: #718096; margin-top: 4px; max-width: 320px; }
+.price-cell { font-size: 0.85rem; color: #2f855a; white-space: nowrap; }
+.price-cell .mic-meta { color: #4a5568; font-size: 0.8rem; margin-top: 2px; }
+.price-cell .mic-subtle { color: #718096; }
+.src-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #4a5568;
+  background: #edf2f7;
+  padding: 2px 8px;
+  border-radius: 6px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.merge-note {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: #fffbeb;
+  border: 1px solid #ecc94b;
+  border-radius: 8px;
+  color: #744210;
+  font-size: 0.9rem;
+}
+.foot-site {
+  margin-top: 28px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+.foot-url-line {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #a0aec0;
+  line-height: 1.4;
+}
+.foot-url-line code {
+  background: #edf2f7;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.92em;
+  color: #4a5568;
+  word-break: break-all;
+}
+.foot-dev-strip {
+  margin-top: 16px;
+  width: 100%;
+  background: #3d3d3d;
+  color: #e8e8e8;
+  text-align: center;
+  padding: 14px 20px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+.foot-dev-text {
+  margin: 0;
+  font-weight: 400;
+}
+.foot-dev-strip a {
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 500;
+}
+.foot-dev-strip a:hover {
+  text-decoration: underline;
+}
+.foot-dev-sep {
+  margin: 0 0.35em;
+  opacity: 0.75;
+}
+.foot-bot-link {
+  white-space: nowrap;
+}
+
+.suggest-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.1);
+}
+.suggest-list li { margin: 0; padding: 0; }
+.suggest-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  cursor: pointer;
+  color: #2d3748;
+}
+.suggest-list button:hover {
+  background: #ebf8ff;
+  color: #2b6cb0;
+}
