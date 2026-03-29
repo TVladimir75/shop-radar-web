@@ -95,33 +95,6 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.72rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    padding: 0.4rem 1rem;
-    margin-bottom: 2rem;
-    font-weight: 500;
-  }
-
-  .hero-badge::before {
-    content: '';
-    width: 6px; height: 6px;
-    background: var(--accent);
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-
   h1 {
     font-family: 'Cormorant Garamond', serif;
     font-size: clamp(3rem, 5.5vw, 5.5rem);
@@ -387,7 +360,6 @@
 
 <section class="hero">
   <div class="hero-inner">
-    <div class="hero-badge">Бесплатно · Без регистрации</div>
     <h1>Найди <em>производителя</em><br>в Китае за 30 секунд</h1>
     <p class="hero-sub">Поиск по Alibaba, Made-in-China и 1688. Сводная таблица поставщиков, рейтинг и подсказки. Запрос можно ввести по-русски — перед поиском он переводится для площадок.</p>
     <div class="hero-actions">
