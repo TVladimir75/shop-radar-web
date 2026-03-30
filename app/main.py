@@ -185,6 +185,7 @@ _PRODUCT_LABEL_HINTS = {
     "dress",
     "shirt",
     "t shirt",
+    "t-shirt",
     "jacket",
     "hoodie",
     "coat",
@@ -194,11 +195,25 @@ _PRODUCT_LABEL_HINTS = {
     "sweater",
     "blouse",
     "bag",
+    "backpack",
+    "handbag",
     "shoes",
     "sneakers",
+    "boot",
+    "hat",
+    "glasses",
+    "sunglasses",
+    "watch",
+    "phone",
+    "headphones",
+    "laptop",
+    "tablet",
+    "toy",
+    "furniture",
+    "lamp",
 }
 
-# Подстроки в LABEL_DETECTION (ниже регистр) — приоритет одежды/юбки.
+# Явная одежда — чуть сильнее буст в скоринге.
 _CLOTHING_LABEL_SUBSTR = (
     "skirt",
     "pleat",
@@ -213,21 +228,109 @@ _CLOTHING_LABEL_SUBSTR = (
     "apparel",
     "clothing",
     "outerwear",
+    "legging",
+    "jeans",
+    "shorts",
 )
 
-# Частые ложные срабатывания Vision/OCR для карточек одежды.
-_CONFUSER_SUBSTR = (
+# Любые узнаваемые товары (маркетплейс): не только одежда.
+_PRODUCT_CATEGORY_SUBSTR = (
+    # одежда / обувь / аксессуары
+    "skirt",
+    "pleat",
+    "dress",
+    "shirt",
+    "jacket",
+    "coat",
+    "pants",
+    "jean",
+    "short",
+    "shoe",
+    "sneaker",
+    "boot",
+    "sandal",
+    "bag",
+    "backpack",
+    "wallet",
+    "belt",
+    "hat",
+    "cap",
+    "scarf",
+    "glove",
+    "watch",
+    "glasses",
+    "sunglasses",
+    "jewelry",
+    "necklace",
+    "ring",
+    "earring",
+    # электроника
+    "phone",
+    "smartphone",
+    "tablet",
+    "laptop",
+    "computer",
+    "headphone",
+    "earphone",
+    "earbud",
+    "speaker",
+    "charger",
+    "cable",
+    "camera",
+    "keyboard",
+    "mouse",
+    "monitor",
+    # дом / кухня
+    "furniture",
+    "chair",
+    "table",
+    "sofa",
+    "lamp",
+    "pillow",
+    "blanket",
+    "curtain",
+    "kitchen",
+    "pot",
+    "pan",
+    "bottle",
+    "cup",
+    "mug",
+    # красота
+    "cosmetic",
+    "lipstick",
+    "makeup",
+    "perfume",
+    "cream",
+    # прочее
+    "toy",
+    "tool",
+    "umbrella",
+    "bicycle",
+    "fitness",
+    "yoga",
+    "stroller",
+)
+
+# Ложные ходы именно для «карточки одежды» (носок вместо юбки и т.п.).
+_APPAREL_CONFUSER_SUBSTR = (
     "sock",
     "stocking",
     "underwear",
     "lingerie",
     "bra",
-    "motorcycle",
-    "helmet",
     "tissue",
+)
+
+# Общие «левые» темы для снижения приоритета.
+_NOISY_SUBSTR = (
     "fruit",
     "vegetable",
-    "electronics",
+    "food",
+    "motorcycle",
+    "helmet",
+    "vehicle",
+    "animal",
+    "pet",
 )
 
 _BAD_OCR_LINES = frozenset(
@@ -240,17 +343,21 @@ _BAD_OCR_LINES = frozenset(
 )
 
 
-def _score_label_for_apparel(raw: str) -> int:
+def _score_label_for_query(raw: str) -> int:
     s = (raw or "").strip().lower()
     if not s or s in _BAD_LABEL_TOKENS:
         return -100
     score = 0
+    if any(k in s for k in _PRODUCT_CATEGORY_SUBSTR):
+        score += 6
     if any(k in s for k in _CLOTHING_LABEL_SUBSTR):
-        score += 10
-    if any(k in s for k in _CONFUSER_SUBSTR):
-        score -= 8
-    if s in _PRODUCT_LABEL_HINTS:
         score += 4
+    if any(k in s for k in _APPAREL_CONFUSER_SUBSTR):
+        score -= 5
+    if any(k in s for k in _NOISY_SUBSTR):
+        score -= 6
+    if s in _PRODUCT_LABEL_HINTS:
+        score += 3
     return score
 
 
@@ -261,11 +368,11 @@ def _best_label_query(labels: list) -> str | None:
         if not isinstance(it, dict):
             continue
         raw = (it.get("description") or "").strip().lower()
-        sc = _score_label_for_apparel(raw)
+        sc = _score_label_for_query(raw)
         if sc > best_score and raw:
             best_score = sc
             best_s = raw
-    if best_score >= 4:
+    if best_score >= 3:
         return _normalize_product_query(best_s)
     return None
 
@@ -274,10 +381,30 @@ def _normalize_product_query(q: str) -> str:
     ql = (q or "").strip().lower()
     if not ql:
         return ""
-    if ql in {"skirt", "mini skirt", "pleated skirt", "high waist skirt", "skirt with pockets"}:
-        return "pleated mini skirt high waist"
-    if ql in {"dress", "shirt", "t shirt", "jacket", "hoodie", "coat", "pants", "shorts", "jeans"}:
-        return ql + " women"
+    # Лёгкое уточнение для женской одежды на витрине (не одна фиксированная «юбка»).
+    _women_apparel = (
+        "skirt",
+        "dress",
+        "blouse",
+        "sweater",
+        "coat",
+        "jacket",
+        "hoodie",
+        "cardigan",
+        "jeans",
+        "pants",
+        "shorts",
+        "legging",
+        "top",
+        "shirt",
+        "t shirt",
+        "t-shirt",
+        "miniskirt",
+        "pleat",
+    )
+    if any(k in ql for k in _women_apparel):
+        if " women" not in ql and " men" not in ql and " kids" not in ql and " baby" not in ql:
+            return (ql + " women")[:120]
     return ql[:120]
 
 
@@ -308,7 +435,7 @@ def _build_query_from_vision_response(resp: dict) -> str:
     if isinstance(best_guess_labels, list) and best_guess_labels:
         best_guess = (best_guess_labels[0].get("label") or "").strip().lower()
         if best_guess and best_guess not in _BAD_LABEL_TOKENS:
-            if _score_label_for_apparel(best_guess) < 0:
+            if _score_label_for_query(best_guess) < 0:
                 pass
             else:
                 return _normalize_product_query(best_guess)
@@ -324,9 +451,9 @@ def _build_query_from_vision_response(resp: dict) -> str:
                 continue
             entity_names.append(name)
         for name in sorted(
-            entity_names, key=lambda s: _score_label_for_apparel(s), reverse=True
+            entity_names, key=lambda s: _score_label_for_query(s), reverse=True
         ):
-            if name in _PRODUCT_LABEL_HINTS or _score_label_for_apparel(name) >= 4:
+            if name in _PRODUCT_LABEL_HINTS or _score_label_for_query(name) >= 3:
                 return _normalize_product_query(name)
 
     # 4) Остальные лейблы без высокого скора.
@@ -338,11 +465,11 @@ def _build_query_from_vision_response(resp: dict) -> str:
         cand.append(raw)
 
     if cand:
-        cand.sort(key=lambda s: _score_label_for_apparel(s), reverse=True)
+        cand.sort(key=lambda s: _score_label_for_query(s), reverse=True)
         preferred = [c for c in cand if c in _PRODUCT_LABEL_HINTS]
         if preferred:
             return _normalize_product_query(preferred[0])
-        if _score_label_for_apparel(cand[0]) >= 0:
+        if _score_label_for_query(cand[0]) >= 0:
             return _normalize_product_query(cand[0])
 
     # 5) OCR: не брать одну китайскую букву типа «袜» и известный мусор.
