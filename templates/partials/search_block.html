@@ -1,0 +1,138 @@
+{% if error %}
+<div class="alert">{{ error }}</div>
+{% endif %}
+{% if merge_note %}
+<div class="merge-note">Не с всех площадок удалось скачать строки: {{ merge_note }}</div>
+{% endif %}
+{% if cache_note %}
+<div class="cache-note">{{ cache_note }}</div>
+{% endif %}
+
+{% if query_used %}
+<p class="query-used">
+  <span class="query-used-label">Запрос на площадках (после перевода):</span>
+  <code class="query-used-text">{{ query_used }}</code>
+</p>
+<p class="platform-links" role="navigation" aria-label="Поиск на площадках">
+  {% if platform_urls %}
+  <span class="platform-links-label">Открыть выдачу сайта:</span>
+  {% if platform_urls.get('MIC') %}<a class="plat-chip" href="{{ platform_urls['MIC'] }}" target="_blank" rel="noopener">MIC</a>{% endif %}
+  {% if platform_urls.get('Alibaba') %}<a class="plat-chip" href="{{ platform_urls['Alibaba'] }}" target="_blank" rel="noopener">Alibaba</a>{% endif %}
+  {% if platform_urls.get('1688') %}<a class="plat-chip" href="{{ platform_urls['1688'] }}" target="_blank" rel="noopener">1688</a>{% endif %}
+  {% if platform_urls.get('Taobao') %}<a class="plat-chip" href="{{ platform_urls['Taobao'] }}" target="_blank" rel="noopener">Taobao</a>{% endif %}
+  {% if platform_urls.get('Pinduoduo') %}<a class="plat-chip" href="{{ platform_urls['Pinduoduo'] }}" target="_blank" rel="noopener">Pinduoduo</a>{% endif %}
+  {% endif %}
+</p>
+{% endif %}
+
+{% if row_count_unfiltered or rows %}
+<form id="filters-form" class="filters-bar card-inner" method="get" action="/search">
+  <input type="hidden" name="product" value="{{ query or '' }}"/>
+  <input type="hidden" name="site_id" value="{{ site_id or 'all' }}"/>
+  <p class="filters-title">Фильтры по уже загруженным результатам</p>
+  <div class="filters-grid">
+    <label class="filter-field">
+      <span>Площадка в таблице</span>
+      <select name="filter_site">
+        <option value="" {% if not filter_site %}selected{% endif %}>Все</option>
+        <option value="mic" {% if filter_site == "mic" %}selected{% endif %}>Made-in-China</option>
+        <option value="alibaba" {% if filter_site == "alibaba" %}selected{% endif %}>Alibaba</option>
+        <option value="1688" {% if filter_site == "1688" %}selected{% endif %}>1688</option>
+        <option value="taobao" {% if filter_site == "taobao" %}selected{% endif %}>Taobao</option>
+        <option value="pinduoduo" {% if filter_site == "pinduoduo" %}selected{% endif %}>Pinduoduo</option>
+      </select>
+    </label>
+    <label class="filter-field filter-grow">
+      <span>Название / описание содержит</span>
+      <input type="text" name="name_contains" value="{{ name_contains or '' }}" maxlength="200" placeholder="подстрока, например LED" autocomplete="off"/>
+    </label>
+    <label class="filter-check">
+      <input type="checkbox" name="only_price" value="1" {% if only_price %}checked{% endif %}/>
+      <span>Только с ценой в карточке</span>
+    </label>
+    <label class="filter-check">
+      <input type="checkbox" name="only_mfg" value="1" {% if only_mfg %}checked{% endif %}/>
+      <span>Только manufacturer / factory</span>
+    </label>
+  </div>
+  <div class="filters-actions">
+    <button type="submit" class="btn btn-secondary">Применить фильтры</button>
+    <a class="btn btn-ghost" href="{{ url_for('export_search_csv') }}?{{ export_qs|safe }}">Скачать CSV</a>
+  </div>
+</form>
+{% endif %}
+
+{% if rows %}
+<section class="card results">
+  <h2>
+    Результаты: {{ rows|length }} компаний
+    {% if row_count_unfiltered and row_count_unfiltered != (rows|length) %}
+    <span class="filter-count-hint">(из {{ row_count_unfiltered }} до фильтров)</span>
+    {% endif %}
+  </h2>
+  <p class="hint hint-retail">
+    <strong>Опт и розница:</strong> MIC и Alibaba — в первую очередь <strong>опт / B2B</strong> (фабрики и торговые компании).
+    1688 — оптовый рынок внутри Китая; Taobao чаще <strong>розница</strong>.
+    Pinduoduo — обычно <strong>розница</strong> (часто дешевле, но дальше уже логистика/посредники).
+    Цены в таблице — ориентир с карточки, не договор.
+  </p>
+  <p class="hint">
+    <strong>Колонка «Цена · индекс»:</strong> слева — ориентир по минимальной цене в карточке (часто US&nbsp;$), справа/ниже — служебный балл площадки (MIC: уровень возможностей; Alibaba: звёзды по сделкам / Gold). Это не ваша закупочная цена.
+    Сортировка: сначала строки с большим числом звёзд в колонке «Рейтинг» упрощённый балл 1–★★★★★, затем по цене-ориентиру.
+    Для MIC и Alibaba запрос <strong>латиницей</strong> обычно даёт лучшую выдачу (одежда → clothing).
+    Составные английские фразы важны: <strong>furniture hardware</strong> — это фурнитура и крепёж, а не диваны; для диванов лучше <strong>sofa</strong> или <strong>wooden furniture</strong>.
+    1688 и Taobao часто недоступны или требуют проверку с датацентров (не из Китая).
+  </p>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th title="Наша оценка карточки: от 1 до 5 звёзд">Рейтинг</th>
+          <th>Компания</th>
+          <th>Тип бизнеса</th>
+          <th>Регион</th>
+          <th>Сотр.</th>
+          <th title="Ориентир по цене с карточки + индекс на сайте">Цена · индекс</th>
+          <th>Аудит</th>
+          <th>Поиск на площадке</th>
+          <th>Сайт</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{% if loop.index <= 10 %}top{% endif %}">
+          <td class="stars-cell" title="Внутренний балл {{ (r.rating|default(0))|round(1) }} → {{ r.rating_stars|default(3) }} из 5 звёзд">
+            <span class="star-row" aria-label="{{ r.rating_stars|default(3) }} из 5">
+              {%- set rs = [5, [1, r.rating_stars|default(3)|int]|max]|min -%}
+              {%- for _ in range(rs) -%}<span class="star on">★</span>{%- endfor -%}
+              {%- for _ in range(5 - rs) -%}<span class="star off">☆</span>{%- endfor -%}
+            </span>
+          </td>
+          <td><strong>{{ r.name }}</strong> <span class="src-badge">{{ r.source_site }}</span>{% if r.snippet %}<div class="snip">{{ r.snippet }}</div>{% endif %}</td>
+          <td>{{ r.business_type or "—" }}</td>
+          <td>{{ r.region or "—" }}</td>
+          <td>{{ r.employees or "—" }}</td>
+          <td class="price-cell">
+            {% if r.low_price %}<div class="price-line">{{ r.low_price }}</div>{% endif %}
+            {% if r.mic_stars %}<div class="mic-meta">★ {{ r.mic_stars }}/5</div>
+            {% elif r.mic_cs_level and r.source_site == 'Made-in-China' %}
+              {% if not r.low_price %}<div class="mic-meta">уровень MIC {{ r.mic_cs_level }}</div>
+              {% else %}<div class="mic-meta mic-subtle">MIC {{ r.mic_cs_level }}</div>{% endif %}
+            {% endif %}
+            {% if r.alibaba_txn_level is not none and r.source_site == 'Alibaba' %}
+              <div class="mic-meta{% if r.low_price %} mic-subtle{% endif %}">Alibaba, сделки: ★&nbsp;{{ r.alibaba_txn_level }}</div>
+            {% elif r.alibaba_gold and r.source_site == 'Alibaba' %}
+              <div class="mic-meta{% if r.low_price %} mic-subtle{% endif %}">Alibaba: Gold Supplier</div>
+            {% endif %}
+            {% if not r.low_price and not r.mic_stars and not (r.mic_cs_level and r.source_site == 'Made-in-China') and (r.alibaba_txn_level is none or r.source_site != 'Alibaba') and (not r.alibaba_gold or r.source_site != 'Alibaba') %}—{% endif %}
+          </td>
+          <td>{% if r.audited %}да{% else %}—{% endif %}</td>
+          <td>{% if r.platform_search_url %}<a href="{{ r.platform_search_url }}" target="_blank" rel="noopener">поиск</a>{% else %}—{% endif %}</td>
+          <td><a href="{{ r.url }}" target="_blank" rel="noopener">открыть</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}

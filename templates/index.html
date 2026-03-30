@@ -30,7 +30,7 @@
       </label>
       <label class="field">
         <span>Площадка</span>
-        <select name="site_id">
+        <select name="site_id" id="site-id-select">
           {% for s in sites %}
           <option value="{{ s.id }}" {% if s.id == site_id %}selected{% endif %}>
             {{ s.label }}
@@ -38,76 +38,24 @@
           {% endfor %}
         </select>
       </label>
-      <button type="submit" class="btn">Показать по рейтингу</button>
+      <button type="submit" class="btn" id="search-submit-btn">Показать по рейтингу</button>
     </form>
 
-    {% if error %}
-    <div class="alert">{{ error }}</div>
-    {% endif %}
-    {% if merge_note %}
-    <div class="merge-note">Не с всех площадок удалось скачать строки: {{ merge_note }}</div>
-    {% endif %}
+    <div id="recent-searches" class="recent-searches" hidden>
+      <p class="recent-title">Недавние запросы</p>
+      <div id="recent-chips" class="recent-chips"></div>
+    </div>
 
-    {% if rows %}
-    <section class="card results">
-      <h2>Результаты: {{ rows|length }} компаний</h2>
-      <p class="hint">
-        <strong>Колонка «Цена · индекс»:</strong> слева — ориентир по минимальной цене в карточке (часто US&nbsp;$), справа/ниже — служебный балл площадки (MIC: уровень возможностей; Alibaba: звёзды по сделкам / Gold). Это не ваша закупочная цена.
-        Сортировка: сначала строки с большим числом звёзд в колонке «Рейтинг» (это наш упрощённый балл 1–★★★★★), затем по цене-ориентиру.         Для MIC и Alibaba запрос <strong>латиницей</strong> обычно даёт лучшую выдачу (одежда → clothing).
-        Составные английские фразы важны: <strong>furniture hardware</strong> — это фурнитура и крепёж, а не диваны; для диванов лучше <strong>sofa</strong> или <strong>wooden furniture</strong>.
-        1688 и Taobao часто недоступны или требуют проверку с датацентров (не из Китая).
-      </p>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th title="Наша оценка карточки: от 1 до 5 звёзд (завод, аудит, регион и т.д.)">Рейтинг</th>
-              <th>Компания</th>
-              <th>Тип бизнеса</th>
-              <th>Регион</th>
-              <th>Сотр.</th>
-              <th title="Ориентир по цене с карточки + индекс/рейтинг с сайта (не договор)">Цена · индекс</th>
-              <th>Аудит</th>
-              <th>Сайт</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in rows %}
-            <tr class="{% if loop.index <= 10 %}top{% endif %}">
-              <td class="stars-cell" title="Внутренний балл {{ (r.rating|default(0))|round(1) }} → {{ r.rating_stars|default(3) }} из 5 звёзд">
-                <span class="star-row" aria-label="{{ r.rating_stars|default(3) }} из 5">
-                  {%- set rs = [5, [1, r.rating_stars|default(3)|int]|max]|min -%}
-                  {%- for _ in range(rs) -%}<span class="star on">★</span>{%- endfor -%}
-                  {%- for _ in range(5 - rs) -%}<span class="star off">☆</span>{%- endfor -%}
-                </span>
-              </td>
-              <td><strong>{{ r.name }}</strong> <span class="src-badge">{{ r.source_site }}</span>{% if r.snippet %}<div class="snip">{{ r.snippet }}</div>{% endif %}</td>
-              <td>{{ r.business_type or "—" }}</td>
-              <td>{{ r.region or "—" }}</td>
-              <td>{{ r.employees or "—" }}</td>
-              <td class="price-cell">
-                {% if r.low_price %}<div class="price-line">{{ r.low_price }}</div>{% endif %}
-                {% if r.mic_stars %}<div class="mic-meta">★ {{ r.mic_stars }}/5</div>
-                {% elif r.mic_cs_level and r.source_site == 'Made-in-China' %}
-                  {% if not r.low_price %}<div class="mic-meta">уровень MIC {{ r.mic_cs_level }}</div>
-                  {% else %}<div class="mic-meta mic-subtle">MIC {{ r.mic_cs_level }}</div>{% endif %}
-                {% endif %}
-                {% if r.alibaba_txn_level is not none and r.source_site == 'Alibaba' %}
-                  <div class="mic-meta{% if r.low_price %} mic-subtle{% endif %}">Alibaba, сделки: ★&nbsp;{{ r.alibaba_txn_level }}</div>
-                {% elif r.alibaba_gold and r.source_site == 'Alibaba' %}
-                  <div class="mic-meta{% if r.low_price %} mic-subtle{% endif %}">Alibaba: Gold Supplier</div>
-                {% endif %}
-                {% if not r.low_price and not r.mic_stars and not (r.mic_cs_level and r.source_site == 'Made-in-China') and (r.alibaba_txn_level is none or r.source_site != 'Alibaba') and (not r.alibaba_gold or r.source_site != 'Alibaba') %}—{% endif %}
-              </td>
-              <td>{% if r.audited %}да{% else %}—{% endif %}</td>
-              <td><a href="{{ r.url }}" target="_blank" rel="noopener">открыть</a></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-    {% endif %}
+    <div id="search-loading" class="search-loading card" hidden aria-busy="true" aria-live="polite">
+      <p class="search-loading-text">Ищем на площадках…</p>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+      <div class="skeleton-line"></div>
+    </div>
+
+    <div id="search-results-mount">
+      {{ search_block_html|safe }}
+    </div>
 
     <script>
 (function () {
@@ -182,6 +130,156 @@
   });
   input.addEventListener("keydown", function (e) {
     if (e.key === "Escape") hide();
+  });
+})();
+
+(function () {
+  var form = document.getElementById("search-form");
+  var mount = document.getElementById("search-results-mount");
+  var loading = document.getElementById("search-loading");
+  var input = document.getElementById("product-input");
+  var siteSel = document.getElementById("site-id-select");
+  var recentWrap = document.getElementById("recent-searches");
+  var recentChips = document.getElementById("recent-chips");
+  var RECENT_KEY = "shop-radar-recent-v1";
+
+  function readRecent() {
+    try {
+      var raw = localStorage.getItem(RECENT_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeRecent(items) {
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(items.slice(0, 8)));
+    } catch (e) {}
+  }
+
+  function pushRecent(product, siteId) {
+    var q = (product || "").trim();
+    if (q.length < 2) return;
+    var sid = siteId || "all";
+    var cur = readRecent().filter(function (x) {
+      return !(x.q === q && x.s === sid);
+    });
+    cur.unshift({ q: q, s: sid });
+    writeRecent(cur);
+    renderRecent();
+  }
+
+  function renderRecent() {
+    if (!recentWrap || !recentChips) return;
+    var items = readRecent();
+    if (!items.length) {
+      recentWrap.hidden = true;
+      return;
+    }
+    recentWrap.hidden = false;
+    recentChips.innerHTML = "";
+    items.forEach(function (it) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "recent-chip";
+      b.textContent = it.q.length > 40 ? it.q.slice(0, 37) + "…" : it.q;
+      b.title = it.q + " · " + it.s;
+      b.onclick = function () {
+        if (input) input.value = it.q;
+        if (siteSel) siteSel.value = it.s;
+        runSearch(true);
+      };
+      recentChips.appendChild(b);
+    });
+  }
+
+  function filterParams() {
+    var p = new URLSearchParams();
+    p.set("product", (input && input.value) || "");
+    p.set("site_id", (siteSel && siteSel.value) || "all");
+    var ff = document.getElementById("filters-form");
+    if (ff) {
+      var fs = ff.elements.namedItem("filter_site");
+      var nc = ff.elements.namedItem("name_contains");
+      var op = ff.elements.namedItem("only_price");
+      var om = ff.elements.namedItem("only_mfg");
+      p.set("filter_site", fs ? fs.value : "");
+      p.set("name_contains", nc ? nc.value : "");
+      p.set("only_price", op && op.checked ? "1" : "0");
+      p.set("only_mfg", om && om.checked ? "1" : "0");
+    } else {
+      p.set("filter_site", "");
+      p.set("name_contains", "");
+      p.set("only_price", "0");
+      p.set("only_mfg", "0");
+    }
+    return p;
+  }
+
+  function searchUrlForHistory() {
+    var base = window.location.origin + "/search";
+    return base + "?" + filterParams().toString();
+  }
+
+  function runSearch(updateHistory) {
+    if (!mount || !loading) return;
+    var q = (input && input.value || "").trim();
+    if (!q) return;
+    loading.hidden = false;
+    var u = "/api/search-result?" + filterParams().toString();
+    fetch(u)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        mount.innerHTML = d.html || "";
+        if (updateHistory && window.history && window.history.pushState) {
+          window.history.pushState({}, "", searchUrlForHistory());
+        }
+        if (d.query_used) {
+          pushRecent((input && input.value) || "", (siteSel && siteSel.value) || "all");
+        }
+      })
+      .catch(function () {
+        mount.innerHTML = '<div class="alert">Не удалось выполнить запрос. Попробуйте ещё раз.</div>';
+      })
+      .finally(function () {
+        loading.hidden = true;
+      });
+  }
+
+  if (form) {
+    form.addEventListener("submit", function (e) {
+      var q = (input && input.value || "").trim();
+      if (!q) return;
+      if (window.fetch && mount) {
+        e.preventDefault();
+        runSearch(true);
+      }
+    });
+  }
+
+  if (mount) {
+    mount.addEventListener("submit", function (e) {
+      var t = e.target;
+      if (t && t.id === "filters-form") {
+        e.preventDefault();
+        runSearch(true);
+      }
+    });
+    mount.addEventListener("change", function (e) {
+      var t = e.target;
+      if (!t || !t.form || t.form.id !== "filters-form") return;
+      if (t.name === "only_price" || t.name === "only_mfg" || t.name === "filter_site") {
+        runSearch(true);
+      }
+    });
+  }
+
+  renderRecent();
+
+  window.addEventListener("popstate", function () {
+    window.location.reload();
   });
 })();
     </script>

@@ -1,20 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.scoring import score_row, score_to_stars
+from app.platform_links import platform_search_urls
+from app.query_translate import prepare_query_for_platforms
+from app.search_cache import get_cached, set_cached
+from app.search_pipeline import (
+    attach_platform_links,
+    filter_scored,
+    score_rows,
+)
 from app.scrapers.alibaba_scraper import fetch_suppliers as fetch_alibaba
 from app.scrapers.cn1688 import fetch_suppliers as fetch_1688
 from app.scrapers.mic import fetch_suppliers as fetch_mic
+from app.scrapers.pinduoduo_scraper import fetch_suppliers as fetch_pinduoduo
 from app.scrapers.taobao_scraper import fetch_suppliers as fetch_taobao
-from app.query_translate import prepare_query_for_platforms
 from app.site_meta import footer_context, landing_context, tool_href
 from app.suggestions import suggest as suggest_products
 
@@ -26,12 +35,14 @@ def _page_ctx(request: Request, **kwargs):
     base = str(request.base_url).rstrip("/")
     return {**footer_context(), "page_base_url": base, **kwargs}
 
+
 SITES = [
     {"id": "all", "label": "Все: MIC + Alibaba + 1688 + Taobao", "active": True},
     {"id": "mic", "label": "Made-in-China.com", "active": True},
     {"id": "alibaba", "label": "Alibaba.com (showroom)", "active": True},
     {"id": "1688", "label": "1688.com", "active": True},
     {"id": "taobao", "label": "Taobao.com", "active": True},
+    {"id": "pinduoduo", "label": "Pinduoduo.com (пока только ссылки)", "active": True},
 ]
 
 _SITE_IDS = {s["id"] for s in SITES}
@@ -42,102 +53,30 @@ def _normalize_site_id(site_id: str) -> str:
     return s if s in _SITE_IDS else "all"
 
 
-async def _render_search_page(
-    request: Request, product: str, site_id: str
-) -> HTMLResponse:
-    site_id = _normalize_site_id(site_id)
-    error: str | None = None
-    rows: list[dict] | None = None
-    merge_note: str | None = None
-
-    if not product:
-        pass
-    else:
+async def _wait_first(
+    fn,
+    product: str,
+    limit: int,
+    timeout: float | None,
+    *,
+    retries: int = 1,
+):
+    last: asyncio.TimeoutError | None = None
+    for attempt in range(retries + 1):
         try:
-            raw, merge_note = await _load_rows(product, site_id)
-            scored: list[dict] = []
-            for r in raw:
-                r = _normalize_row(r)
-                sc = score_row(
-                    has_audited=r["audited"],
-                    business_type=r.get("business_type"),
-                    has_region=bool(r.get("region")),
-                    has_employees=bool(r.get("employees")),
-                    name_len=len(r["name"]),
+            if timeout is not None:
+                return await asyncio.wait_for(
+                    fn(product, limit=limit), timeout=timeout
                 )
-                rs = max(1, min(5, int(score_to_stars(sc))))
-                scored.append(
-                    {**r, "rating": float(sc), "rating_stars": rs}
-                )
-            scored.sort(key=_result_sort_key)
-            rows = scored
-            if not rows:
-                error = (
-                    "Ничего не найдено. Попробуйте другие слова; на MIC/Alibaba на английском обычно лучше."
-                )
-        except ValueError as e:
-            error = str(e)
-        except Exception as e:
-            error = f"Не удалось загрузить данные: {e!s}"
-
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        _page_ctx(
-            request,
-            sites=SITES,
-            rows=rows,
-            query=product,
-            site_id=site_id,
-            error=error,
-            merge_note=merge_note,
-        ),
-    )
+            return await fn(product, limit=limit)
+        except asyncio.TimeoutError as e:
+            last = e
+            if attempt >= retries:
+                raise
+    raise last  # pragma: no cover
 
 
-def _normalize_row(r: dict) -> dict:
-    """Все ключи для шаблона (иначе Jinja даёт «пустые» поля и обрезанный текст)."""
-    x = dict(r)
-    x.setdefault("low_price", "")
-    x.setdefault("mic_stars", None)
-    x.setdefault("mic_cs_level", None)
-    x.setdefault("alibaba_txn_level", None)
-    x.setdefault("alibaba_gold", False)
-    x.setdefault("price_usd_min", None)
-    x.setdefault("source_site", "")
-    return x
-
-
-def _sort_float(x, default: float = 0.0) -> float:
-    if x is None or x == "":
-        return default
-    try:
-        return float(x)
-    except (TypeError, ValueError):
-        return default
-
-
-def _result_sort_key(row: dict):
-    """Рейтинг → цена (USD) → MIC-звёзды / уровень → уровень сделок Alibaba."""
-    rating = _sort_float(row.get("rating"), 0.0)
-    p = row.get("price_usd_min")
-    price_part = p if p is not None else float("inf")
-    stars = row.get("mic_stars") or 0
-    cs = row.get("mic_cs_level") or 0
-    txn_part = _sort_float(row.get("alibaba_txn_level"), 0.0)
-    try:
-        stars = int(stars)
-    except (TypeError, ValueError):
-        stars = 0
-    try:
-        cs = int(cs)
-    except (TypeError, ValueError):
-        cs = 0
-    return (-rating, price_part, -stars, -cs, -txn_part)
-
-
-async def _load_rows(product: str, site_id: str) -> tuple[list[dict], str | None]:
-    """Возвращает сырые строки и необязательное примечание (для режима «все»)."""
+async def _fetch_raw_rows(product: str, site_id: str) -> tuple[list[dict], str | None]:
     notes: list[str] = []
     merged: list[dict] = []
 
@@ -146,9 +85,21 @@ async def _load_rows(product: str, site_id: str) -> tuple[list[dict], str | None
     elif site_id == "alibaba":
         merged = await fetch_alibaba(product, limit=35)
     elif site_id == "1688":
-        merged = await fetch_1688(product, limit=30)
+        try:
+            merged = await _wait_first(fetch_1688, product, 30, 20.0, retries=1)
+        except asyncio.TimeoutError:
+            raise ValueError(
+                "1688.com: нет ответа за отведённое время (часто недоступен вне Китая)."
+            ) from None
     elif site_id == "taobao":
-        merged = await fetch_taobao(product, limit=30)
+        try:
+            merged = await _wait_first(fetch_taobao, product, 30, 18.0, retries=1)
+        except asyncio.TimeoutError:
+            raise ValueError(
+                "Taobao: нет ответа за отведённое время (часто недоступен вне Китая)."
+            ) from None
+    elif site_id == "pinduoduo":
+        merged = await fetch_pinduoduo(product, limit=30)
     elif site_id == "all":
         for fn, label, lim, tmo in (
             (fetch_mic, "Made-in-China", 18, None),
@@ -157,7 +108,9 @@ async def _load_rows(product: str, site_id: str) -> tuple[list[dict], str | None
             (fetch_taobao, "Taobao", 8, 14.0),
         ):
             try:
-                if tmo is not None:
+                if label in ("1688", "Taobao") and tmo is not None:
+                    part = await _wait_first(fn, product, lim, tmo, retries=1)
+                elif tmo is not None:
                     part = await asyncio.wait_for(
                         fn(product, limit=lim), timeout=tmo
                     )
@@ -176,13 +129,194 @@ async def _load_rows(product: str, site_id: str) -> tuple[list[dict], str | None
     return merged, (" · ".join(notes) if notes else None)
 
 
+async def _load_rows(
+    product_key: str, site_id: str
+) -> tuple[list[dict], str | None, bool]:
+    hit = await get_cached(site_id, product_key)
+    if hit is not None:
+        rows, notes = hit
+        return rows, notes, True
+    rows, notes = await _fetch_raw_rows(product_key, site_id)
+    await set_cached(site_id, product_key, rows, notes)
+    return rows, notes, False
+
+
+def _parse_only_flag(v: int | str) -> bool:
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    return s in ("1", "true", "yes", "on")
+
+
+def _export_query(
+    product: str,
+    site_id: str,
+    filter_site: str,
+    name_contains: str,
+    only_price: bool,
+    only_mfg: bool,
+) -> str:
+    return urlencode(
+        {
+            "product": product or "",
+            "site_id": site_id,
+            "filter_site": filter_site or "",
+            "name_contains": name_contains or "",
+            "only_price": 1 if only_price else 0,
+            "only_mfg": 1 if only_mfg else 0,
+        },
+        doseq=True,
+    )
+
+
+async def _build_search_block_context(
+    request: Request,
+    *,
+    product: str,
+    site_id: str,
+    filter_site: str = "",
+    name_contains: str = "",
+    only_price: bool = False,
+    only_manufacturer: bool = False,
+) -> dict:
+    site_id = _normalize_site_id(site_id)
+    fs = (filter_site or "").strip().lower()
+    if fs not in {"", "mic", "alibaba", "1688", "taobao", "pinduoduo"}:
+        fs = ""
+    name_contains = (name_contains or "").strip()
+
+    error: str | None = None
+    merge_note: str | None = None
+    cache_note: str | None = None
+    row_count_unfiltered = 0
+    query_used = ""
+
+    product_stripped = (product or "").strip()
+    if not product_stripped:
+        return {
+            "rows": None,
+            "row_count_unfiltered": 0,
+            "query_used": "",
+            "platform_urls": {},
+            "error": None,
+            "merge_note": None,
+            "cache_note": None,
+            "filter_site": fs,
+            "name_contains": name_contains,
+            "only_price": only_price,
+            "only_mfg": only_manufacturer,
+            "site_id": site_id,
+            "query": "",
+            "export_qs": _export_query(
+                "", site_id, fs, name_contains, only_price, only_manufacturer
+            ),
+        }
+
+    rows_out: list[dict] | None = None
+    try:
+        query_used = await prepare_query_for_platforms(product_stripped)
+        raw, merge_note, from_cache = await _load_rows(query_used, site_id)
+        if from_cache:
+            cache_note = "Показан кэш сырой выдачи (~15 мин), без повторного запроса к площадкам."
+
+        scored = score_rows(raw)
+        row_count_unfiltered = len(scored)
+        urls = platform_search_urls(query_used)
+        attach_platform_links(scored, urls)
+        filtered = filter_scored(
+            scored,
+            filter_site_key=fs,
+            name_contains=name_contains,
+            only_with_price=only_price,
+            only_manufacturer=only_manufacturer,
+        )
+        rows_out = filtered
+
+        if not raw:
+            error = (
+                "Ничего не найдено. Попробуйте другие слова; на MIC/Alibaba на английском обычно лучше."
+            )
+        elif not filtered and raw:
+            error = "Ни одна строка не прошла фильтры. Ослабьте условия или снимите галочки."
+
+    except ValueError as e:
+        error = str(e)
+    except Exception as e:
+        error = f"Не удалось загрузить данные: {e!s}"
+
+    return {
+        "rows": rows_out,
+        "row_count_unfiltered": row_count_unfiltered,
+        "query_used": query_used,
+        "platform_urls": platform_search_urls(query_used) if query_used else {},
+        "error": error,
+        "merge_note": merge_note,
+        "cache_note": cache_note,
+        "filter_site": fs,
+        "name_contains": name_contains,
+        "only_price": only_price,
+        "only_mfg": only_manufacturer,
+        "site_id": site_id,
+        "query": product_stripped,
+        "export_qs": _export_query(
+            product_stripped,
+            site_id,
+            fs,
+            name_contains,
+            only_price,
+            only_manufacturer,
+        ),
+    }
+
+
+def _render_search_block_html(request: Request, ctx: dict) -> str:
+    return templates.get_template("partials/search_block.html").render(
+        request=request, **ctx
+    )
+
+
+async def _render_search_page(
+    request: Request,
+    product: str,
+    site_id: str,
+    *,
+    filter_site: str = "",
+    name_contains: str = "",
+    only_price: bool = False,
+    only_mfg: bool = False,
+) -> HTMLResponse:
+    block = await _build_search_block_context(
+        request,
+        product=product,
+        site_id=site_id,
+        filter_site=filter_site,
+        name_contains=name_contains,
+        only_price=only_price,
+        only_manufacturer=only_mfg,
+    )
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        _page_ctx(
+            request,
+            sites=SITES,
+            search_block_html=_render_search_block_html(request, block),
+            **{k: block[k] for k in (
+                "rows", "row_count_unfiltered", "query_used", "platform_urls",
+                "error", "merge_note", "cache_note",
+                "filter_site", "name_contains", "only_price", "only_mfg",
+                "site_id", "query", "export_qs",
+            )},
+        ),
+    )
+
+
 app = FastAPI(title="Подбор поставщиков")
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def landing(request: Request) -> HTMLResponse:
-    """Лицевая страница; инструмент поиска — /tool."""
     tool_rel = str(request.url_for("tool_home"))
     ctx = {**landing_context(), "tool_url": tool_href(tool_rel)}
     return templates.TemplateResponse(request, "landing.html", ctx)
@@ -190,31 +324,34 @@ async def landing(request: Request) -> HTMLResponse:
 
 @app.get("/tool", response_class=HTMLResponse, name="tool_home")
 async def tool_home(request: Request) -> HTMLResponse:
+    empty = await _build_search_block_context(
+        request, product="", site_id="all"
+    )
     return templates.TemplateResponse(
         request,
         "index.html",
         _page_ctx(
             request,
             sites=SITES,
-            rows=None,
-            query="",
-            site_id="all",
-            error=None,
-            merge_note=None,
+            search_block_html=_render_search_block_html(request, empty),
+            **{k: empty[k] for k in (
+                "rows", "row_count_unfiltered", "query_used", "platform_urls",
+                "error", "merge_note", "cache_note",
+                "filter_site", "name_contains", "only_price", "only_mfg",
+                "site_id", "query", "export_qs",
+            )},
         ),
     )
 
 
 @app.get("/api/suggest")
 async def api_suggest(q: str = Query("", max_length=120)) -> JSONResponse:
-    """Подсказки при наборе в поле «товар / тема»."""
     items = suggest_products(q, limit=12)
     return JSONResponse({"items": items})
 
 
 @app.get("/api/translate_query")
 async def api_translate_query(q: str = Query("", max_length=300)) -> JSONResponse:
-    """Подстановка EN в строку поиска после паузы при вводе по-русски."""
     raw = (q or "").strip()
     if not raw:
         return JSONResponse({"en": "", "changed": False})
@@ -223,17 +360,121 @@ async def api_translate_query(q: str = Query("", max_length=300)) -> JSONRespons
     return JSONResponse({"en": en, "changed": changed})
 
 
+@app.get("/api/search-result", name="api_search_result")
+async def api_search_result(
+    request: Request,
+    product: str = Query("", max_length=300),
+    site_id: str = Query("all"),
+    filter_site: str = Query("", max_length=32),
+    name_contains: str = Query("", max_length=200),
+    only_price: int = Query(0),
+    only_mfg: int = Query(0),
+) -> JSONResponse:
+    ctx = await _build_search_block_context(
+        request,
+        product=product,
+        site_id=site_id,
+        filter_site=filter_site,
+        name_contains=name_contains,
+        only_price=_parse_only_flag(only_price),
+        only_manufacturer=_parse_only_flag(only_mfg),
+    )
+    html = _render_search_block_html(request, ctx)
+    n = len(ctx["rows"]) if ctx["rows"] else 0
+    return JSONResponse(
+        {
+            "html": html,
+            "query_used": ctx["query_used"],
+            "merge_note": ctx["merge_note"],
+            "cache_note": ctx["cache_note"],
+            "error": ctx["error"],
+            "row_count": n,
+            "row_count_unfiltered": ctx["row_count_unfiltered"],
+        }
+    )
+
+
+@app.get("/export/search.csv", name="export_search_csv")
+async def export_search_csv(
+    request: Request,
+    product: str = Query("", max_length=300),
+    site_id: str = Query("all"),
+    filter_site: str = Query("", max_length=32),
+    name_contains: str = Query("", max_length=200),
+    only_price: int = Query(0),
+    only_mfg: int = Query(0),
+) -> Response:
+    ctx = await _build_search_block_context(
+        request,
+        product=product,
+        site_id=site_id,
+        filter_site=filter_site,
+        name_contains=name_contains,
+        only_price=_parse_only_flag(only_price),
+        only_manufacturer=_parse_only_flag(only_mfg),
+    )
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(
+        [
+            "rating_stars",
+            "rating",
+            "name",
+            "business_type",
+            "region",
+            "employees",
+            "low_price",
+            "source_site",
+            "url",
+            "platform_search_url",
+            "audited",
+        ]
+    )
+    for r in ctx["rows"] or []:
+        w.writerow(
+            [
+                r.get("rating_stars", ""),
+                r.get("rating", ""),
+                r.get("name", ""),
+                r.get("business_type", ""),
+                r.get("region", ""),
+                r.get("employees", ""),
+                r.get("low_price", ""),
+                r.get("source_site", ""),
+                r.get("url", ""),
+                r.get("platform_search_url", ""),
+                "yes" if r.get("audited") else "",
+            ]
+        )
+    data = buf.getvalue().encode("utf-8-sig")
+    fname = "suppliers.csv"
+    return Response(
+        content=data,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @app.get("/search", response_class=HTMLResponse, name="search_page")
 async def search_get(
     request: Request,
     product: str = Query(""),
     site_id: str = Query("all"),
+    filter_site: str = Query("", max_length=32),
+    name_contains: str = Query("", max_length=200),
+    only_price: int = Query(0),
+    only_mfg: int = Query(0),
 ) -> HTMLResponse:
-    """Тот же поиск по URL (обновление страницы после POST больше не даёт 404)."""
     q = (product or "").strip()
-    if q:
-        q = await prepare_query_for_platforms(q)
-    return await _render_search_page(request, q, site_id)
+    return await _render_search_page(
+        request,
+        q,
+        site_id,
+        filter_site=filter_site,
+        name_contains=name_contains,
+        only_price=_parse_only_flag(only_price),
+        only_mfg=_parse_only_flag(only_mfg),
+    )
 
 
 @app.post("/search", response_model=None)
@@ -242,17 +483,12 @@ async def search_post(
     product: str = Form(""),
     site_id: str = Form("all"),
 ):
-    """
-    POST → редирект на GET с параметрами (PRG): в адресной строке /search?...,
-    повторное открытие и обновление не шлют POST без тела и не ломаются.
-    """
     product = (product or "").strip()
     site_id = _normalize_site_id(site_id)
     if not product:
         return await _render_search_page(request, "", site_id)
 
-    product = await prepare_query_for_platforms(product)
-
+    product_prepared = await prepare_query_for_platforms(product)
     loc = str(request.url_for("search_page"))
-    loc = f"{loc}?{urlencode({'product': product, 'site_id': site_id})}"
+    loc = f"{loc}?{_export_query(product_prepared, site_id, '', '', False, False)}"
     return RedirectResponse(loc, status_code=303)
