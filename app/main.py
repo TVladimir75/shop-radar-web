@@ -156,6 +156,8 @@ def _parse_only_flag(v: int | str) -> bool:
 
 _CN_QUERY_HINTS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"百褶|褶裙|半身裙|短裙|裙"), "pleated skirt"),
+    (re.compile(r"松紧腰|高腰"), "high waist skirt"),
+    (re.compile(r"口袋"), "skirt with pockets"),
     (re.compile(r"连衣裙"), "dress"),
     (re.compile(r"T恤|短袖|上衣"), "t shirt"),
     (re.compile(r"裤|短裤|牛仔"), "shorts"),
@@ -197,6 +199,17 @@ _PRODUCT_LABEL_HINTS = {
 }
 
 
+def _normalize_product_query(q: str) -> str:
+    ql = (q or "").strip().lower()
+    if not ql:
+        return ""
+    if ql in {"skirt", "mini skirt", "pleated skirt", "high waist skirt", "skirt with pockets"}:
+        return "pleated mini skirt high waist"
+    if ql in {"dress", "shirt", "t shirt", "jacket", "hoodie", "coat", "pants", "shorts", "jeans"}:
+        return ql + " women"
+    return ql[:120]
+
+
 def _build_query_from_vision_response(resp: dict) -> str:
     text_ann = resp.get("textAnnotations") or []
     labels = resp.get("labelAnnotations") or []
@@ -204,20 +217,36 @@ def _build_query_from_vision_response(resp: dict) -> str:
 
     text_full = ""
     if isinstance(text_ann, list) and text_ann:
-        text_full = (text_ann[0].get("description") or "").strip()
+        text_full = "\n".join(
+            [(x.get("description") or "").strip() for x in text_ann if isinstance(x, dict)]
+        ).strip()
 
     # 1) Явные китайские подсказки в OCR-тексте (лучше всего для маркетплейсных картинок).
     if text_full:
         for rx, q in _CN_QUERY_HINTS:
             if rx.search(text_full):
-                return q
+                return _normalize_product_query(q)
 
     # 2) Best guess labels из WEB_DETECTION.
     best_guess_labels = web_detection.get("bestGuessLabels") or []
     if isinstance(best_guess_labels, list) and best_guess_labels:
         best_guess = (best_guess_labels[0].get("label") or "").strip().lower()
         if best_guess and best_guess not in _BAD_LABEL_TOKENS:
-            return best_guess[:120]
+            return _normalize_product_query(best_guess)
+
+    entities = web_detection.get("webEntities") or []
+    if isinstance(entities, list):
+        entity_names = []
+        for ent in entities:
+            if not isinstance(ent, dict):
+                continue
+            name = (ent.get("description") or "").strip().lower()
+            if not name or name in _BAD_LABEL_TOKENS:
+                continue
+            entity_names.append(name)
+        for name in entity_names:
+            if name in _PRODUCT_LABEL_HINTS:
+                return _normalize_product_query(name)
 
     # 3) Отфильтрованные LABEL_DETECTION.
     cand: list[str] = []
@@ -230,15 +259,13 @@ def _build_query_from_vision_response(resp: dict) -> str:
     if cand:
         preferred = [c for c in cand if c in _PRODUCT_LABEL_HINTS]
         if preferred:
-            q = preferred[0]
-            if q in {"skirt", "mini skirt", "pleated skirt"}:
-                return "pleated skirt women"
-            return q[:120]
-        return cand[0][:120]
+            return _normalize_product_query(preferred[0])
+        return _normalize_product_query(cand[0])
 
     # 4) Фолбэк на OCR-текст: только короткий фрагмент.
     if text_full:
-        return text_full.splitlines()[0][:120]
+        first = text_full.splitlines()[0][:120]
+        return _normalize_product_query(first)
     return ""
 
 
@@ -522,6 +549,7 @@ async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
     resp = ((data or {}).get("responses") or [{}])[0]
     labels = resp.get("labelAnnotations") or []
     query = _build_query_from_vision_response(resp)
+    logger.warning("vision_query_selected query=%s", query)
 
     query = query[:120] if query else ""
     if not query:
