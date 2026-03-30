@@ -110,7 +110,11 @@ async def _fetch_raw_rows(
                 "Taobao: нет ответа за отведённое время (часто недоступен вне Китая)."
             ) from None
     elif site_id == "pinduoduo":
-        merged = await fetch_pinduoduo(q_cn, limit=30, latin_hint=q_intl)
+        try:
+            merged = await fetch_pinduoduo(q_cn, limit=30, latin_hint=q_intl)
+        except Exception as e:
+            merged = []
+            notes.append(str(e))
     elif site_id == "all":
         for fn, label, lim, tmo, use_cn in (
             (fetch_mic, "Made-in-China", 18, None, False),
@@ -587,9 +591,13 @@ async def _build_search_block_context(
         rows_out = filtered
 
         if not raw:
-            error = (
-                "Ничего не найдено. Попробуйте другие слова; на MIC/Alibaba на английском обычно лучше."
-            )
+            if merge_note:
+                error = merge_note
+                merge_note = None
+            else:
+                error = (
+                    "Ничего не найдено. Попробуйте другие слова; на MIC/Alibaba на английском обычно лучше."
+                )
         elif not filtered and raw:
             error = "Ни одна строка не прошла фильтры. Ослабьте условия или снимите галочки."
 
