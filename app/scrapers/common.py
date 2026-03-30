@@ -144,6 +144,8 @@ _EN_ZH_PRODUCT: tuple[tuple[str, str], ...] = (
     ("mini skirt", "短裙"),
     ("miniskirt", "超短裙"),
     ("pleated skirt", "百褶裙"),
+    ("tennis skirt", "网球裙"),
+    ("sports skirt", "运动裙"),
     ("high waist skirt", "高腰半身裙"),
     ("skirt with pockets", "口袋半身裙"),
     ("sneakers", "运动鞋"),

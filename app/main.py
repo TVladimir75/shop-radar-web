@@ -110,7 +110,7 @@ async def _fetch_raw_rows(
                 "Taobao: нет ответа за отведённое время (часто недоступен вне Китая)."
             ) from None
     elif site_id == "pinduoduo":
-        merged = await fetch_pinduoduo(q_cn, limit=30)
+        merged = await fetch_pinduoduo(q_cn, limit=30, latin_hint=q_intl)
     elif site_id == "all":
         for fn, label, lim, tmo, use_cn in (
             (fetch_mic, "Made-in-China", 18, None, False),

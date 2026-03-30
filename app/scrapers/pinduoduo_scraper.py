@@ -149,8 +149,14 @@ def _tokens_from_query(q: str, slug: str) -> set[str]:
     return out
 
 
-def _relevance_score(name: str, tokens: set[str], q_lower: str) -> int:
-    """Одинаковая логика для любой категории: токены запроса + EN→CN подсказки.
+def _relevance_score(
+    name: str,
+    tokens: set[str],
+    q_lower: str,
+    *,
+    query_display: str = "",
+) -> int:
+    """Токены запроса + EN→CN подсказки; для 中文 — явное вхождение фразы без регекса.
 
     Односимвольные китайские подсказки (鞋、裙、灯…) дают меньший вес — иначе
     вложенные иероглифы в чужих словах слишком часто дают ложное совпадение.
@@ -159,6 +165,11 @@ def _relevance_score(name: str, tokens: set[str], q_lower: str) -> int:
         return 0
     nl = name.lower()
     score = 0
+    qcjk = re.sub(r"[\s\-]+", "", (query_display or "").strip())
+    if len(qcjk) >= 2 and CJK_RE.search(qcjk):
+        nn = re.sub(r"\s+", "", name)
+        if qcjk in nn:
+            score += 32
     for t in tokens:
         if len(t) < 2:
             continue
@@ -186,7 +197,12 @@ def _relevance_score(name: str, tokens: set[str], q_lower: str) -> int:
     return max(0, score)
 
 
-async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str, Any]]:
+async def fetch_suppliers(
+    product_query: str,
+    limit: int = 25,
+    *,
+    latin_hint: str = "",
+) -> list[dict[str, Any]]:
     q = (product_query or "").strip()
     if not q:
         q = "LED"
@@ -201,9 +217,13 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
     else:
         keyword = quote_plus(slug)
     url = f"{PINDUODUO_SEARCH_BASE}?keyword={keyword}"
-    q_lower = qn.lower()
     slug_tok = slug if slug != "product" else ""
-    tokens = _tokens_from_query(qn, slug_tok)
+    tokens: set[str] = set(_tokens_from_query(qn, slug_tok))
+    hint = (latin_hint or "").strip()
+    if hint and hint != qn:
+        hs = b2b_path_slug(hint)
+        tokens |= set(_tokens_from_query(hint, hs if hs != "product" else ""))
+    q_lower = f"{qn} {hint}".lower().strip()
 
     async with async_playwright() as p:
         try:
@@ -338,7 +358,7 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
         kw = quote_plus((name_raw or "")[:120]) if name_raw else keyword
         url_out = f"{PINDUODUO_SEARCH_BASE}?keyword={kw}"
 
-        rel = _relevance_score(name_raw, tokens, q_lower)
+        rel = _relevance_score(name_raw, tokens, q_lower, query_display=qn)
         candidates.append(
             {
                 "name": name_raw,
