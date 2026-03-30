@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import csv
+import os
 import io
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, Form, Query, Request
+import httpx
+from fastapi import File, FastAPI, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -358,6 +361,77 @@ async def api_translate_query(q: str = Query("", max_length=300)) -> JSONRespons
     en = await prepare_query_for_platforms(raw)
     changed = en != raw
     return JSONResponse({"en": en, "changed": changed})
+
+
+@app.post("/api/vision-to-query")
+async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
+    """
+    Берёт загруженное фото, вызывает Google Vision API и возвращает текстовый запрос
+    (label/text) для передачи в существующий поиск.
+    """
+    key = os.environ.get("GOOGLE_VISION_KEY")
+    if not key:
+        return JSONResponse(
+            {"error": "GOOGLE_VISION_KEY не задан. Установите ключ в переменных окружения."},
+            status_code=400,
+        )
+
+    # Ограничение, чтобы не убить сервер огромными файлами.
+    raw = await image.read()
+    if len(raw) > 4 * 1024 * 1024:
+        return JSONResponse({"error": "Файл слишком большой (лимит 4MB)."}, status_code=400)
+
+    b64 = base64.b64encode(raw).decode("ascii")
+    url = "https://vision.googleapis.com/v1/images:annotate"
+
+    payload = {
+        "requests": [
+            {
+                "image": {"content": b64},
+                "features": [
+                    {"type": "LABEL_DETECTION", "maxResults": 5},
+                    {"type": "TEXT_DETECTION", "maxResults": 1},
+                ],
+                # Подсказка для модели (если ключ возвращает русский — всё равно ок).
+                "imageContext": {"languageHints": ["en", "ru"]},
+            }
+        ]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(url, params={"key": key}, json=payload)
+            r.raise_for_status()
+    except httpx.HTTPError as e:
+        return JSONResponse(
+            {"error": f"Google Vision API error: {e!s}"},
+            status_code=502,
+        )
+
+    data = r.json()
+    resp = ((data or {}).get("responses") or [{}])[0]
+    labels = resp.get("labelAnnotations") or []
+    text_ann = resp.get("textAnnotations") or []
+
+    query = ""
+    if isinstance(labels, list) and labels:
+        # description обычно наиболее “человеческая”
+        query = (labels[0].get("description") or "").strip()
+    if not query and isinstance(text_ann, list) and text_ann:
+        # 0-й элемент textAnnotations — полный распознанный текст
+        query = (text_ann[0].get("description") or "").strip()
+
+    query = query[:120] if query else ""
+    if not query:
+        return JSONResponse(
+            {
+                "error": "Не удалось извлечь осмысленный запрос из фото. Попробуйте другое изображение/ракурс.",
+                "debug": {"labels_count": len(labels) if isinstance(labels, list) else 0},
+            },
+            status_code=400,
+        )
+
+    return JSONResponse({"query": query})
 
 
 @app.get("/api/search-result", name="api_search_result")
