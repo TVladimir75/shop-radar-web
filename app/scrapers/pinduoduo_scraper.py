@@ -90,6 +90,9 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
     q = (product_query or "").strip()
     if not q:
         q = "LED"
+    # Render часто не передаёт PLAYWRIGHT_BROWSERS_PATH в рантайм, поэтому
+    # задаём его явно, чтобы Playwright искал бинарник в одном и том же месте.
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/render/cache/ms-playwright")
     # Pinduoduo мобильная выдача обычно любит латиницу/англ. slug-подход как в других.
     slug = b2b_path_slug(q)
     keyword = quote_plus(slug)
@@ -120,9 +123,8 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
                             ],
                             check=True,
                             env=env,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                            text=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
                         )
                         _PW_INSTALL_DONE = True
                 browser = await p.chromium.launch(headless=True)
