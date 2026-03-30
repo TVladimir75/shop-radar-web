@@ -404,10 +404,9 @@ async def fetch_suppliers(
             except ValueError:
                 pass
 
-        # Прямой goods2.html в обычном браузере часто редиректит на экран входа.
-        # Ссылка «Сайт» ведёт в мобильный поиск по названию карточки — обычно открывается без логина.
-        kw = quote_plus((name_raw or "")[:120]) if name_raw else keyword
-        url_out = f"{PINDUODUO_SEARCH_BASE}?keyword={kw}"
+        # goods2.html часто требует вход. «Сайт» ведёт в поиск по тому же запросу, что и скрапер
+        # (не по названию карточки — при ленте 推荐 карточка может быть «стельки» и ссылка уводит не туда).
+        url_out = f"{PINDUODUO_SEARCH_ALT}?keyword={keyword}"
 
         rel = _relevance_score(name_raw, tokens, q_lower, query_display=qn)
         candidates.append(

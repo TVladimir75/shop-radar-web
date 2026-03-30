@@ -30,7 +30,8 @@ def platform_search_urls(query_en: str, query_zh: str | None = None) -> dict[str
         "1688": f"https://s.1688.com/selloffer/offer_search.htm?keywords={qp_zh}",
         "Taobao": f"https://s.taobao.com/search?commend=all&ie=utf8&q={qp_zh}",
         "AliExpress": f"https://www.aliexpress.com/wholesale?SearchText={qp_en}",
-        "Pinduoduo": f"https://mobile.yangkeduo.com/search_result.h?keyword={qp_zh}",
+        # .html стабильнее для открытия в браузере, чем .h (реже ведёт на главную 推荐).
+        "Pinduoduo": f"https://mobile.yangkeduo.com/search_result.html?keyword={qp_zh}",
     }
 
 
