@@ -48,7 +48,8 @@ SITES = [
     {"id": "alibaba", "label": "Alibaba.com (showroom)", "active": True},
     {"id": "1688", "label": "1688.com", "active": True},
     {"id": "taobao", "label": "Taobao.com", "active": True},
-    {"id": "pinduoduo", "label": "Pinduoduo.com", "active": True},
+    # В конце списка: вне КНР часто экран входа и «推荐», а не поиск.
+    {"id": "pinduoduo", "label": "Pinduoduo (эксперимент: нужен Китай / приложение)", "active": True},
 ]
 
 _SITE_IDS = {s["id"] for s in SITES}

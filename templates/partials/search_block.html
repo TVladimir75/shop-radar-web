@@ -8,6 +8,12 @@
 <div class="cache-note">{{ cache_note }}</div>
 {% endif %}
 
+{% if site_id == 'pinduoduo' %}
+<div class="merge-note">
+  <strong>Pinduoduo:</strong> ссылка «Pinduoduo» ниже может открыть <strong>экран входа</strong> или общую ленту — так сайт ведёт себя для многих IP вне Китая. Для практического подбора используйте MIC, Alibaba или режим <strong>«Все»</strong>.
+</div>
+{% endif %}
+
 {% if query_used %}
 <p class="query-used">
   <span class="query-used-label">Запрос для MIC / Alibaba (латиница):</span>
@@ -79,8 +85,7 @@
   <p class="hint hint-retail">
     <strong>Опт и розница:</strong> MIC и Alibaba — в первую очередь <strong>опт / B2B</strong> (фабрики и торговые компании).
     1688 — оптовый рынок внутри Китая; Taobao чаще <strong>розница</strong>.
-    Pinduoduo — обычно <strong>розница</strong> (часто дешевле, но дальше уже логистика/посредники).
-    Колонка «Сайт» для Pinduoduo открывает <strong>поиск по названию карточки</strong> (так реже всплывает экран входа, чем у прямой ссылки на товар).
+    Pinduoduo — <strong>розница</strong>; с браузера часто просят <strong>вход</strong>. Колонка «Сайт» ведёт в поиск по <strong>тому же запросу</strong>, что вверху страницы (не по названию строки).
     Цены в таблице — ориентир с карточки, не договор.
   </p>
   <p class="hint">

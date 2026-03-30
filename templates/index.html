@@ -11,7 +11,7 @@
     <header class="head">
       <p class="lead-tool-nav"><a href="/">← Shop Radar</a></p>
       <h1>Подбор поставщиков</h1>
-      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Русский или английский ввод готовится в <strong>английский</strong> для MIC/Alibaba и в <strong>китайский</strong> для 1688, Taobao и Pinduoduo; и ручной ввод, и запрос после распознавания фото используют одну цепочку. <strong>Поиск по фото</strong> только у <strong>Pinduoduo</strong>. Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
+      <p class="lead">Для поставщиков в первую очередь смотрите <strong>«Все»</strong>, <strong>MIC</strong> или <strong>Alibaba</strong> — они открываются в браузере предсказуемо. Запрос по-русски готовится в английский (MIC/Alibaba) и в китайский (1688, Taobao). <strong>Pinduoduo</strong> с облака часто показывает вход по телефону или ленту «推荐» — это ограничение площадки, не «сломанный» поиск. Поиск по фото (эксперимент) только при выборе Pinduoduo.</p>
     </header>
 
     <form id="search-form" class="card" method="post" action="/search">
@@ -38,9 +38,12 @@
           {% endfor %}
         </select>
       </label>
+      <p class="field-hint pdd-caveat" id="pdd-caveat" {% if site_id != 'pinduoduo' %}hidden{% endif %}>
+        <strong>Pinduoduo:</strong> в браузере часто требуется <strong>вход (手机登录)</strong> или открывается главная «推荐», а не выдача по запросу — типично вне Китая. Чтобы не терять время, для опта используйте пункт <strong>«Все»</strong> или отдельно MIC / Alibaba.
+      </p>
       <div class="field vision-field" id="vision-field-wrap" {% if site_id != 'pinduoduo' %}hidden{% endif %}>
-        <span>Поиск по фото (только Pinduoduo)</span>
-        <span class="field-hint">Загрузите снимок товара — сервер распознаёт объект и запускает поиск по Pinduoduo.</span>
+        <span>Поиск по фото (эксперимент, только Pinduoduo)</span>
+        <span class="field-hint">Распознавание даёт текст запроса; сама выдача PPD с сервера всё равно может не совпасть с приложением.</span>
         <div class="vision-row">
           <input type="file" id="vision-file" accept="image/*" aria-label="Фото товара для распознавания"/>
           <button type="button" class="btn btn-secondary" id="vision-search-btn">Распознать и искать</button>
@@ -154,9 +157,17 @@
 
   function syncVisionVisibility() {
     var wrap = document.getElementById("vision-field-wrap");
-    if (!wrap || !siteSel) return;
-    if (siteSel.value === "pinduoduo") wrap.removeAttribute("hidden");
-    else wrap.setAttribute("hidden", "");
+    var cave = document.getElementById("pdd-caveat");
+    if (!siteSel) return;
+    var pdd = siteSel.value === "pinduoduo";
+    if (wrap) {
+      if (pdd) wrap.removeAttribute("hidden");
+      else wrap.setAttribute("hidden", "");
+    }
+    if (cave) {
+      if (pdd) cave.removeAttribute("hidden");
+      else cave.setAttribute("hidden", "");
+    }
   }
   if (siteSel) siteSel.addEventListener("change", syncVisionVisibility);
   syncVisionVisibility();
