@@ -170,6 +170,16 @@ def _relevance_score(
         nn = re.sub(r"\s+", "", name)
         if qcjk in nn:
             score += 32
+        else:
+            # Частичное совпадение (网球, 球裙) — названия редко дословно «网球裙».
+            seen_bg: set[str] = set()
+            for i in range(len(qcjk) - 1):
+                bg = qcjk[i : i + 2]
+                if bg in seen_bg or not CJK_RE.search(bg):
+                    continue
+                seen_bg.add(bg)
+                if bg in nn:
+                    score += 9
     for t in tokens:
         if len(t) < 2:
             continue
@@ -269,16 +279,24 @@ async def fetch_suppliers(
             page = await context.new_page()
             # Немного увеличиваем таймаут — мобильные страницы иногда грузят дольше.
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(2200)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=9000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(2400)
             final_url = page.url
             # Частый кейс: search_result.h уводит на главную — тогда пробуем .html?keyword=
             if not _looks_like_search_url(final_url):
                 alt = f"{PINDUODUO_SEARCH_ALT}?keyword={keyword}"
                 await page.goto(alt, wait_until="domcontentloaded", timeout=45000)
-                await page.wait_for_timeout(2200)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=9000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(2400)
                 final_url = page.url
             try:
-                for depth in (1600, 3200):
+                for depth in (1600, 3200, 4800):
                     await page.evaluate(
                         f"() => window.scrollTo(0, Math.min(document.body.scrollHeight, {depth}))"
                     )
@@ -387,8 +405,20 @@ async def fetch_suppliers(
         )
 
     max_rel = max(c["_rel"] for c in candidates)
-    # Без совпадений возвращали «первые goods_id» — визуально тот же мусор, только быстрее.
+    # Нет ни одной релевантной карточки — типично лента 推荐 с посторонними товарами.
     if max_rel <= 0:
+        if len(candidates) >= 12:
+            warn = (
+                "Страница PDD похожа на рекомендации (推荐), не на поиск — совпадений с запросом не найдено. "
+                "Ниже первые карточки из HTML; уточните текст или откройте выдачу в браузере ближе к КНР. "
+            )
+            out_fb: list[dict[str, Any]] = []
+            for c in candidates[:limit]:
+                c.pop("_rel", None)
+                sn = (c.get("snippet") or c.get("name") or "")[:360]
+                c["snippet"] = warn + sn
+                out_fb.append(c)
+            return out_fb
         raise RuntimeError(
             "Pinduoduo: в разметке нет карточек, похожих на запрос (часто лента «推荐», а не поиск). "
             "Уточните текст (китайский/английский) или попробуйте сеть ближе к Китаю."
