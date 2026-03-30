@@ -546,28 +546,43 @@ async def api_search_result(
     only_price: int = Query(0),
     only_mfg: int = Query(0),
 ) -> JSONResponse:
-    ctx = await _build_search_block_context(
-        request,
-        product=product,
-        site_id=site_id,
-        filter_site=filter_site,
-        name_contains=name_contains,
-        only_price=_parse_only_flag(only_price),
-        only_manufacturer=_parse_only_flag(only_mfg),
-    )
-    html = _render_search_block_html(request, ctx)
-    n = len(ctx["rows"]) if ctx["rows"] else 0
-    return JSONResponse(
-        {
-            "html": html,
-            "query_used": ctx["query_used"],
-            "merge_note": ctx["merge_note"],
-            "cache_note": ctx["cache_note"],
-            "error": ctx["error"],
-            "row_count": n,
-            "row_count_unfiltered": ctx["row_count_unfiltered"],
-        }
-    )
+    try:
+        ctx = await _build_search_block_context(
+            request,
+            product=product,
+            site_id=site_id,
+            filter_site=filter_site,
+            name_contains=name_contains,
+            only_price=_parse_only_flag(only_price),
+            only_manufacturer=_parse_only_flag(only_mfg),
+        )
+        html = _render_search_block_html(request, ctx)
+        n = len(ctx["rows"]) if ctx["rows"] else 0
+        return JSONResponse(
+            {
+                "html": html,
+                "query_used": ctx["query_used"],
+                "merge_note": ctx["merge_note"],
+                "cache_note": ctx["cache_note"],
+                "error": ctx["error"],
+                "row_count": n,
+                "row_count_unfiltered": ctx["row_count_unfiltered"],
+            }
+        )
+    except Exception as e:
+        logger.exception("api_search_result_failed: %s", e)
+        return JSONResponse(
+            {
+                "html": '<div class="alert">Ошибка поиска: внутренняя ошибка обработки результата.</div>',
+                "query_used": "",
+                "merge_note": None,
+                "cache_note": None,
+                "error": f"Внутренняя ошибка: {e!s}",
+                "row_count": 0,
+                "row_count_unfiltered": 0,
+            },
+            status_code=200,
+        )
 
 
 @app.get("/export/search.csv", name="export_search_csv")
