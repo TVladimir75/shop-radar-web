@@ -198,6 +198,77 @@ _PRODUCT_LABEL_HINTS = {
     "sneakers",
 }
 
+# Подстроки в LABEL_DETECTION (ниже регистр) — приоритет одежды/юбки.
+_CLOTHING_LABEL_SUBSTR = (
+    "skirt",
+    "pleat",
+    "miniskirt",
+    "dress",
+    "blouse",
+    "sweater",
+    "jacket",
+    "hoodie",
+    "coat",
+    "cardigan",
+    "apparel",
+    "clothing",
+    "outerwear",
+)
+
+# Частые ложные срабатывания Vision/OCR для карточек одежды.
+_CONFUSER_SUBSTR = (
+    "sock",
+    "stocking",
+    "underwear",
+    "lingerie",
+    "bra",
+    "motorcycle",
+    "helmet",
+    "tissue",
+    "fruit",
+    "vegetable",
+    "electronics",
+)
+
+_BAD_OCR_LINES = frozenset(
+    {
+        "袜",
+        "袜子",
+        "内裤",
+        "内衣",
+    }
+)
+
+
+def _score_label_for_apparel(raw: str) -> int:
+    s = (raw or "").strip().lower()
+    if not s or s in _BAD_LABEL_TOKENS:
+        return -100
+    score = 0
+    if any(k in s for k in _CLOTHING_LABEL_SUBSTR):
+        score += 10
+    if any(k in s for k in _CONFUSER_SUBSTR):
+        score -= 8
+    if s in _PRODUCT_LABEL_HINTS:
+        score += 4
+    return score
+
+
+def _best_label_query(labels: list) -> str | None:
+    best_s = ""
+    best_score = -999
+    for it in labels if isinstance(labels, list) else []:
+        if not isinstance(it, dict):
+            continue
+        raw = (it.get("description") or "").strip().lower()
+        sc = _score_label_for_apparel(raw)
+        if sc > best_score and raw:
+            best_score = sc
+            best_s = raw
+    if best_score >= 4:
+        return _normalize_product_query(best_s)
+    return None
+
 
 def _normalize_product_query(q: str) -> str:
     ql = (q or "").strip().lower()
@@ -227,12 +298,20 @@ def _build_query_from_vision_response(resp: dict) -> str:
             if rx.search(text_full):
                 return _normalize_product_query(q)
 
-    # 2) Best guess labels из WEB_DETECTION.
+    # 2) LABEL_DETECTION раньше WEB/OCR — реже путается с «носок / еда» на фото одежды.
+    label_q = _best_label_query(labels)
+    if label_q:
+        return label_q
+
+    # 3) WEB_DETECTION: пропускаем явные confuser-bestGuess.
     best_guess_labels = web_detection.get("bestGuessLabels") or []
     if isinstance(best_guess_labels, list) and best_guess_labels:
         best_guess = (best_guess_labels[0].get("label") or "").strip().lower()
         if best_guess and best_guess not in _BAD_LABEL_TOKENS:
-            return _normalize_product_query(best_guess)
+            if _score_label_for_apparel(best_guess) < 0:
+                pass
+            else:
+                return _normalize_product_query(best_guess)
 
     entities = web_detection.get("webEntities") or []
     if isinstance(entities, list):
@@ -244,11 +323,13 @@ def _build_query_from_vision_response(resp: dict) -> str:
             if not name or name in _BAD_LABEL_TOKENS:
                 continue
             entity_names.append(name)
-        for name in entity_names:
-            if name in _PRODUCT_LABEL_HINTS:
+        for name in sorted(
+            entity_names, key=lambda s: _score_label_for_apparel(s), reverse=True
+        ):
+            if name in _PRODUCT_LABEL_HINTS or _score_label_for_apparel(name) >= 4:
                 return _normalize_product_query(name)
 
-    # 3) Отфильтрованные LABEL_DETECTION.
+    # 4) Остальные лейблы без высокого скора.
     cand: list[str] = []
     for it in labels if isinstance(labels, list) else []:
         raw = (it.get("description") or "").strip().lower()
@@ -257,15 +338,26 @@ def _build_query_from_vision_response(resp: dict) -> str:
         cand.append(raw)
 
     if cand:
+        cand.sort(key=lambda s: _score_label_for_apparel(s), reverse=True)
         preferred = [c for c in cand if c in _PRODUCT_LABEL_HINTS]
         if preferred:
             return _normalize_product_query(preferred[0])
-        return _normalize_product_query(cand[0])
+        if _score_label_for_apparel(cand[0]) >= 0:
+            return _normalize_product_query(cand[0])
 
-    # 4) Фолбэк на OCR-текст: только короткий фрагмент.
+    # 5) OCR: не брать одну китайскую букву типа «袜» и известный мусор.
     if text_full:
-        first = text_full.splitlines()[0][:120]
-        return _normalize_product_query(first)
+        for line in text_full.splitlines():
+            t = line.strip()
+            if not t or len(t) > 120:
+                continue
+            if t in _BAD_OCR_LINES:
+                continue
+            if len(t) == 1 and "\u4e00" <= t <= "\u9fff":
+                continue
+            if any(c in t for c in ("袜",)) and "裙" not in t and "裤" not in t:
+                continue
+            return _normalize_product_query(t)
     return ""
 
 
@@ -507,9 +599,9 @@ async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
             {
                 "image": {"content": b64},
                 "features": [
-                    {"type": "LABEL_DETECTION", "maxResults": 5},
+                    {"type": "LABEL_DETECTION", "maxResults": 15},
                     {"type": "TEXT_DETECTION", "maxResults": 1},
-                    {"type": "WEB_DETECTION", "maxResults": 5},
+                    {"type": "WEB_DETECTION", "maxResults": 10},
                 ],
                 # Подсказка для модели (если ключ возвращает русский — всё равно ок).
                 "imageContext": {"languageHints": ["en", "ru"]},
