@@ -359,11 +359,7 @@
           return;
         }
         textInput.value = q;
-        setVisionMsg("Запрос: «" + q + "» — загружаем выдачу…", false);
-        if (typeof window.__shopRadarRunSearch === "function") {
-          window.__shopRadarRunSearch(true);
-        }
-        setVisionMsg("");
+        setVisionMsg("Распознано: «" + q + "». При необходимости поправьте запрос и нажмите «Показать по рейтингу».", false);
       })
       .catch(function () {
         setVisionMsg("Сеть или сервер недоступны. Попробуйте ещё раз.", true);
