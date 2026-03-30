@@ -22,10 +22,41 @@ from urllib.parse import quote_plus
 
 from playwright.async_api import async_playwright
 
-from app.scrapers.common import CHROME_UA, b2b_path_slug
+from app.scrapers.common import b2b_path_slug
 
 
 PINDUODUO_SEARCH_BASE = "https://mobile.yangkeduo.com/search_result.h"
+
+# Настоящий мобильный UA: меньше шансов получить «главную/рекламу» вместо блока выдачи.
+PINDUODUO_MOBILE_UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+)
+
+# Токены запроса (латиница) → типичные иероглифы в названии карточки на PDD.
+_QUERY_EN_CN: tuple[tuple[str, str], ...] = (
+    ("skirt", "裙"),
+    ("pleat", "百褶"),
+    ("dress", "连衣裙"),
+    ("shirt", "衫"),
+    ("coat", "外套"),
+    ("jacket", "夹克"),
+    ("pant", "裤"),
+    ("jean", "牛仔"),
+    ("shoe", "鞋"),
+    ("boot", "靴"),
+    ("sandal", "凉鞋"),
+    ("bag", "包"),
+    ("watch", "手表"),
+    ("glass", "眼镜"),
+    ("sunglass", "墨镜"),
+    ("phone", "手机"),
+    ("headphone", "耳机"),
+    ("laptop", "笔记本"),
+    ("tablet", "平板"),
+    ("led", "灯"),
+    ("lamp", "灯"),
+)
 
 _PW_INSTALL_LOCK = asyncio.Lock()
 _PW_INSTALL_DONE = False
@@ -85,6 +116,40 @@ def _unescape_json_str(s: str) -> str:
             return s
 
 
+def _tokens_from_query(q: str, slug: str) -> set[str]:
+    """Слова из запроса и из slug (дефисы → слова)."""
+    raw = f"{q} {slug.replace('-', ' ')}"
+    raw = raw.lower().strip()
+    parts = re.split(r"[^a-z0-9\u4e00-\u9fff]+", raw)
+    out: set[str] = set()
+    for p in parts:
+        if len(p) >= 2 and not p.isdigit():
+            out.add(p)
+        # китайский — часто односложно
+        if len(p) == 1 and "\u4e00" <= p <= "\u9fff":
+            out.add(p)
+    return out
+
+
+def _relevance_score(name: str, tokens: set[str], q_lower: str) -> int:
+    if not name:
+        return 0
+    nl = name.lower()
+    score = 0
+    for t in tokens:
+        if len(t) < 2:
+            continue
+        if t in nl:
+            score += 4
+        if t in name:
+            score += 2
+    for en, cn in _QUERY_EN_CN:
+        if en in q_lower or any(en in x for x in tokens):
+            if cn in name:
+                score += 5
+    return score
+
+
 async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str, Any]]:
     q = (product_query or "").strip()
     if not q:
@@ -96,6 +161,8 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
     slug = b2b_path_slug(q)
     keyword = quote_plus(slug)
     url = f"{PINDUODUO_SEARCH_BASE}?keyword={keyword}"
+    q_lower = q.lower()
+    tokens = _tokens_from_query(q, slug)
 
     async with async_playwright() as p:
         try:
@@ -131,14 +198,21 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
                 raise
         try:
             context = await browser.new_context(
-                viewport={"width": 1280, "height": 720},
-                user_agent=CHROME_UA,
-                locale="en-US",
+                viewport={"width": 390, "height": 844},
+                user_agent=PINDUODUO_MOBILE_UA,
+                locale="zh-CN",
             )
             page = await context.new_page()
             # Немного увеличиваем таймаут — мобильные страницы иногда грузят дольше.
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(1800)
+            await page.wait_for_timeout(2200)
+            try:
+                await page.evaluate(
+                    "() => window.scrollTo(0, Math.min(document.body.scrollHeight, 1600))"
+                )
+                await page.wait_for_timeout(1200)
+            except Exception:
+                pass
             final_url = page.url
             title = await page.title()
             html = await page.content()
@@ -164,12 +238,12 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
         # Если SMS встречается в тексте страницы — это скорее всего реальная верификация.
         raise RuntimeError("Pinduoduo запрашивает подтверждение (SMS/верификация).")
 
-    # Выдача — React/SPA: карточки товара лежат в embedded JSON внутри HTML.
-    # Вокруг `goods_id=...` обычно встречаются `goods_name`, `price` и `link_url`.
-    out: list[dict[str, Any]] = []
+    # В HTML много goods_id (реклама, рекомендации). Собираем кандидатов и
+    # сортируем по релевантности к запросу — иначе в таблице «случайный мусор».
+    candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    id_matches = list(re.finditer(r"goods_id=(\d+)", html))
+    id_matches = list(re.finditer(r"goods_id=(\d+)", html))[:180]
     for m in id_matches:
         gid = m.group(1)
         if gid in seen:
@@ -206,7 +280,8 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
         kw = quote_plus((name_raw or "")[:120]) if name_raw else keyword
         url_out = f"{PINDUODUO_SEARCH_BASE}?keyword={kw}"
 
-        out.append(
+        rel = _relevance_score(name_raw, tokens, q_lower)
+        candidates.append(
             {
                 "name": name_raw,
                 "url": url_out,
@@ -222,18 +297,33 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
                 "alibaba_gold": False,
                 "price_usd_min": price_usd_min,
                 "source_site": "Pinduoduo",
+                "_rel": rel,
             }
         )
 
-        if len(out) >= limit:
-            break
-
-    if not out:
+    if not candidates:
         # Важно: не использовать финальный URL в сообщении (он может быть длинный),
         # но сигнализировать «почему» пользователю/себе.
         raise RuntimeError(
             "Pinduoduo: не удалось извлечь карточки товара (нет goods_name/price в HTML)."
         )
+
+    max_rel = max(c["_rel"] for c in candidates)
+    if max_rel >= 2:
+        filtered = [c for c in candidates if c["_rel"] >= 1]
+        if len(filtered) >= min(limit, 5):
+            candidates = filtered
+
+    candidates.sort(
+        key=lambda c: (
+            -int(c["_rel"]),
+            -1 if c.get("low_price") else 0,
+        )
+    )
+    out: list[dict[str, Any]] = []
+    for c in candidates[:limit]:
+        c.pop("_rel", None)
+        out.append(c)
 
     return out
 
