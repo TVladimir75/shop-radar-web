@@ -11,7 +11,7 @@
     <header class="head">
       <p class="lead-tool-nav"><a href="/">← Shop Radar</a></p>
       <h1>Подбор поставщиков</h1>
-      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Можно писать по-русски: перед поиском запрос переводится в английский для площадок. Для <strong>Pinduoduo</strong> и остальных площадок доступен <strong>поиск по фото</strong>: загрузите снимок — распознаётся объект, подставляется текст и выполняется обычная выдача (нужен ключ Google Vision на сервере). Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
+      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Можно писать по-русски: перед поиском запрос переводится в английский для площадок. <strong>Поиск по фото</strong> показывается только если в списке выбрана площадка <strong>Pinduoduo</strong> (нужен ключ Google Vision на сервере). Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
     </header>
 
     <form id="search-form" class="card" method="post" action="/search">
@@ -28,15 +28,6 @@
         />
         <ul id="product-suggest" class="suggest-list" hidden></ul>
       </label>
-      <div class="field vision-field">
-        <span>Поиск по фото (в том числе Pinduoduo)</span>
-        <span class="field-hint">Выберите фото товара — в поле выше подставится распознанный запрос; поиск пойдёт по уже выбранной площадке (включая только Pinduoduo).</span>
-        <div class="vision-row">
-          <input type="file" id="vision-file" accept="image/*" aria-label="Фото товара для распознавания"/>
-          <button type="button" class="btn btn-secondary" id="vision-search-btn">Распознать и искать</button>
-        </div>
-        <p id="vision-status" class="vision-status" role="status" aria-live="polite"></p>
-      </div>
       <label class="field">
         <span>Площадка</span>
         <select name="site_id" id="site-id-select">
@@ -47,6 +38,15 @@
           {% endfor %}
         </select>
       </label>
+      <div class="field vision-field" id="vision-field-wrap" {% if site_id != 'pinduoduo' %}hidden{% endif %}>
+        <span>Поиск по фото (только Pinduoduo)</span>
+        <span class="field-hint">Загрузите снимок товара — сервер распознает объект (Google Vision), подставит текст в поле выше и запустит поиск по Pinduoduo.</span>
+        <div class="vision-row">
+          <input type="file" id="vision-file" accept="image/*" aria-label="Фото товара для распознавания"/>
+          <button type="button" class="btn btn-secondary" id="vision-search-btn">Распознать и искать</button>
+        </div>
+        <p id="vision-status" class="vision-status" role="status" aria-live="polite"></p>
+      </div>
       <button type="submit" class="btn" id="search-submit-btn">Показать по рейтингу</button>
     </form>
 
@@ -152,6 +152,15 @@
   var recentChips = document.getElementById("recent-chips");
   var RECENT_KEY = "shop-radar-recent-v1";
 
+  function syncVisionVisibility() {
+    var wrap = document.getElementById("vision-field-wrap");
+    if (!wrap || !siteSel) return;
+    if (siteSel.value === "pinduoduo") wrap.removeAttribute("hidden");
+    else wrap.setAttribute("hidden", "");
+  }
+  if (siteSel) siteSel.addEventListener("change", syncVisionVisibility);
+  syncVisionVisibility();
+
   function readRecent() {
     try {
       var raw = localStorage.getItem(RECENT_KEY);
@@ -198,6 +207,7 @@
       b.onclick = function () {
         if (input) input.value = it.q;
         if (siteSel) siteSel.value = it.s;
+        syncVisionVisibility();
         runSearch(true);
       };
       recentChips.appendChild(b);

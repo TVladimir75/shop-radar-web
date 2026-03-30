@@ -402,6 +402,17 @@ async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(url, params={"key": key}, json=payload)
             r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        hint = ""
+        if e.response.status_code == 403:
+            hint = (
+                " В Google Cloud: включите API «Cloud Vision», привяжите биллинг, "
+                "снимите лишние ограничения ключа (API / реферер). Если ключ светился в открытом виде — лучше перевыпустить."
+            )
+        return JSONResponse(
+            {"error": f"Google Vision API ({e.response.status_code}): {e!s}.{hint}"},
+            status_code=502,
+        )
     except httpx.HTTPError as e:
         return JSONResponse(
             {"error": f"Google Vision API error: {e!s}"},

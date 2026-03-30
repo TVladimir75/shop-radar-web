@@ -365,20 +365,17 @@
 <section class="hero">
   <div class="hero-inner">
     <h1>Найди <em>производителя</em><br>в Китае за 30 секунд</h1>
-    <p class="hero-sub">Поиск по Alibaba, Made-in-China, 1688 и Taobao. Сводная таблица, рейтинг и подсказки. Запрос можно ввести по-русски — перед поиском он переводится для площадок.</p>
+    <p class="hero-sub">Поиск по Alibaba, Made-in-China, 1688, Taobao и Pinduoduo. Сводная таблица, рейтинг и подсказки. Запрос можно ввести по-русски — перед поиском он переводится для площадок. Поиск по фото доступен в инструменте только при выборе площадки Pinduoduo.</p>
     <div class="hero-actions">
       <a href="{{ tool_url }}" class="btn-primary">
         Перейти к поиску →
       </a>
       <a href="#how" class="btn-secondary">Как это работает</a>
-      <button type="button" class="btn-secondary" id="vision-btn" style="border-bottom: 1px solid var(--border); cursor: pointer;">
-        Найти по фото →
-      </button>
     </div>
     <div class="stats">
       <div>
-        <div class="stat-num">4</div>
-        <div class="stat-label">площадки</div>
+        <div class="stat-num">5</div>
+        <div class="stat-label">площадок</div>
       </div>
       <div>
         <div class="stat-num">30с</div>
@@ -395,12 +392,6 @@
     </div>
   </div>
 </section>
-
-<input type="file" id="vision-file" accept="image/*" capture="environment" style="display:none"/>
-<div id="vision-status" style="position:fixed; left:50%; top:18%; transform:translateX(-50%); z-index:9999; display:none; background: rgba(255,255,255,0.95); border:1px solid var(--border); border-radius: 12px; padding: 14px 18px; max-width: 680px; box-shadow: 0 10px 30px rgba(0,0,0,0.12);">
-  <div style="font-weight:600; margin-bottom:8px;">Анализируем фото…</div>
-  <div style="color: var(--text2); font-size: 0.9rem;">Это займёт несколько секунд.</div>
-</div>
 
 <section class="platforms">
   <div class="section-label">Площадки</div>
@@ -425,6 +416,11 @@
       <div class="platform-desc">Розничный маркетплейс Alibaba Group. Много магазинов и карточек товара; с облачных серверов выдача часто блокируется (капча), но в режиме «всё» вы не потеряете другие площадки.</div>
       <div class="platform-tag">C2C / retail</div>
     </div>
+    <div class="platform-card">
+      <div class="platform-name">Pinduoduo</div>
+      <div class="platform-desc">Розничная площадка с низкими ценами. В инструменте для неё доступен поиск по фото (распознавание объекта). Прямые ссылки на карточки часто открывают экран входа в браузере — удобнее приложение или поиск по названию.</div>
+      <div class="platform-tag">Retail / CN</div>
+    </div>
   </div>
 </section>
 
@@ -439,7 +435,7 @@
     <div class="how-step">
       <div class="step-num">02</div>
       <div class="step-title">Выберите площадки</div>
-      <div class="step-desc">Ищите по всем четырём сразу или выберите конкретную. Результаты объединяются в одну таблицу.</div>
+      <div class="step-desc">Ищите по всем площадкам сразу или выберите конкретную. Результаты объединяются в одну таблицу.</div>
     </div>
     <div class="how-step">
       <div class="step-num">03</div>
@@ -466,46 +462,6 @@
   </div>
   <div class="footer-copy">© 2026 <a href="{{ brand_site_url }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none;">{{ footer_dev_name }}</a> · <a href="{{ footer_telegram_url }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none;">@{{ footer_telegram_handle }}</a></div>
 </footer>
-
-<script>
-(function () {
-  var btn = document.getElementById("vision-btn");
-  var file = document.getElementById("vision-file");
-  var status = document.getElementById("vision-status");
-  if (!btn || !file || !status) return;
-
-  function showStatus(show) {
-    status.style.display = show ? "block" : "none";
-  }
-
-  btn.addEventListener("click", function () {
-    if (file) file.click();
-  });
-
-  file.addEventListener("change", async function () {
-    var f = (file && file.files && file.files[0]) ? file.files[0] : null;
-    if (!f) return;
-    showStatus(true);
-    try {
-      var fd = new FormData();
-      fd.append("image", f);
-      var r = await fetch("/api/vision-to-query", { method: "POST", body: fd });
-      var d = await r.json().catch(function(){ return {}; });
-      if (!r.ok || d.error) {
-        var msg = (d && d.error) ? d.error : "Не удалось обработать фото.";
-        status.innerHTML = "<div style='font-weight:600; margin-bottom:8px;'>Ошибка</div><div style='color: var(--text2); font-size: 0.9rem; white-space: pre-wrap;'>" + msg + "</div>";
-        return;
-      }
-      var q = d.query || "";
-      if (!q) throw new Error("Пустой запрос из Vision.");
-      var params = new URLSearchParams({ product: q, site_id: "all" });
-      window.location.href = "/search?" + params.toString();
-    } catch (e) {
-      status.innerHTML = "<div style='font-weight:600; margin-bottom:8px;'>Ошибка</div><div style='color: var(--text2); font-size: 0.9rem; white-space: pre-wrap;'>" + (e && e.message ? e.message : e) + "</div>";
-    }
-  });
-})();
-</script>
 
 </body>
 </html>

@@ -18,12 +18,11 @@ import re
 import subprocess
 import sys
 from typing import Any
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus
 
-from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
-from app.scrapers.common import CHROME_UA, BROWSER_HEADERS, b2b_path_slug, quote_path_segment
+from app.scrapers.common import CHROME_UA, b2b_path_slug
 
 
 PINDUODUO_SEARCH_BASE = "https://mobile.yangkeduo.com/search_result.h"
@@ -182,10 +181,6 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
 
         name_m = re.search(r'"goods_name"\s*:\s*"([^"]+)"', win)
         price_m = re.search(r'"price"\s*:\s*([0-9]+)', win)
-        link_m = re.search(
-            r'"link_url"\s*:\s*"([^"]*goods_id=' + re.escape(gid) + r'[^"]*)"',
-            win,
-        )
 
         if not name_m:
             continue
@@ -206,10 +201,10 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
             except ValueError:
                 pass
 
-        link_url = link_m.group(1) if link_m else ""
-        url_out = (
-            urljoin("https://mobile.yangkeduo.com", link_url) if link_url else url
-        )
+        # Прямой goods2.html в обычном браузере часто редиректит на экран входа.
+        # Ссылка «Сайт» ведёт в мобильный поиск по названию карточки — обычно открывается без логина.
+        kw = quote_plus((name_raw or "")[:120]) if name_raw else keyword
+        url_out = f"{PINDUODUO_SEARCH_BASE}?keyword={kw}"
 
         out.append(
             {
