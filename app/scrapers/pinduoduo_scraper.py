@@ -149,6 +149,30 @@ def _tokens_from_query(q: str, slug: str) -> set[str]:
     return out
 
 
+# Под «юбку» часто маскируются платья (连衣裙) — отсекаем очевидные не-юбки по названию.
+_SKIRT_FALSE_SKIRT_RE = re.compile(
+    r"(长袖连衣裙|短袖连衣裙|棉衣裙|雪纺裙套装|吊带连衣裙|针织连衣裙|衬衫裙)"
+)
+_SKIRT_POSITIVE_KEYS = (
+    "半身裙",
+    "百褶",
+    "短裙",
+    "长裙",
+    "A字裙",
+    "伞裙",
+    "包臀裙",
+    "鱼尾裙",
+    "直筒裙",
+    "工装裙",
+    "纱裙",
+    "蓬蓬裙",
+    "蛋糕裙",
+    "网球裙",
+    "格子裙",
+    "牛仔裙",
+)
+
+
 def _relevance_score(name: str, tokens: set[str], q_lower: str) -> int:
     if not name:
         return 0
@@ -176,9 +200,34 @@ def _relevance_score(name: str, tokens: set[str], q_lower: str) -> int:
             if len(en) <= len(x)
         )
         if q_hit or tok_hit:
+            # «裙» встречается в «连衣裙»/«套装裙» — для юбки это ложные срабатывания.
+            if en == "skirt" and cn == "裙" and (
+                "连衣裙" in name
+                or "连身裙" in name
+                or _SKIRT_FALSE_SKIRT_RE.search(name)
+            ):
+                continue
             if cn in name:
                 score += 6
-    return score
+
+    # Юбка vs платье: отдельные бонусы и штрафы (иначе одна «платье-карточка» забивает выдачу).
+    skirt_q = bool(
+        re.search(r"(?<![a-z])skirt(?![a-z])", q_lower)
+        or re.search(r"(?<![a-z])pleat", q_lower)
+        or "miniskirt" in q_lower
+        or "skirt" in tokens
+        or "pleat" in tokens
+    )
+    dress_q = bool(re.search(r"(?<![a-z])dress(?![a-z])", q_lower) or "dress" in tokens)
+    if skirt_q and not dress_q:
+        if any(k in name for k in _SKIRT_POSITIVE_KEYS):
+            score += 5
+        if "连衣裙" in name or "连身裙" in name:
+            score -= 28
+        if "两件套" in name or "三件套" in name:
+            if not any(k in name for k in ("半身裙", "短裙", "百褶", "A字裙")):
+                score -= 10
+    return max(0, score)
 
 
 async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str, Any]]:
@@ -248,10 +297,11 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
                 await page.wait_for_timeout(2200)
                 final_url = page.url
             try:
-                await page.evaluate(
-                    "() => window.scrollTo(0, Math.min(document.body.scrollHeight, 1600))"
-                )
-                await page.wait_for_timeout(1200)
+                for depth in (1600, 3200):
+                    await page.evaluate(
+                        f"() => window.scrollTo(0, Math.min(document.body.scrollHeight, {depth}))"
+                    )
+                    await page.wait_for_timeout(900)
             except Exception:
                 pass
             title = await page.title()
@@ -290,7 +340,7 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
     candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    id_matches = list(re.finditer(r"goods_id=(\d+)", html))[:180]
+    id_matches = list(re.finditer(r"goods_id=(\d+)", html))[:260]
     for m in id_matches:
         gid = m.group(1)
         if gid in seen:
