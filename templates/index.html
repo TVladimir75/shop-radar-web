@@ -242,10 +242,11 @@
     return base + "?" + filterParams().toString();
   }
 
-  function runSearch(updateHistory) {
+  function runSearch(updateHistory, attempt) {
     if (!mount || !loading) return;
     var q = (input && input.value || "").trim();
     if (!q) return;
+    var tries = typeof attempt === "number" ? attempt : 0;
     loading.hidden = false;
     var u = "/api/search-result?" + filterParams().toString();
     fetch(u)
@@ -259,6 +260,10 @@
       .then(function (res) {
         var d = res.data || {};
         if (!res.ok) {
+          if (res.status === 502 && tries < 2) {
+            setTimeout(function () { runSearch(updateHistory, tries + 1); }, 900 * (tries + 1));
+            return;
+          }
           throw new Error(d.error || ("Ошибка поиска: HTTP " + res.status));
         }
         if (d.error && !d.html) {
