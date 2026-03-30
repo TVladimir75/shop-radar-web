@@ -249,8 +249,21 @@
     loading.hidden = false;
     var u = "/api/search-result?" + filterParams().toString();
     fetch(u)
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
+      .then(function (r) {
+        return r.json()
+          .catch(function () { return {}; })
+          .then(function (d) {
+            return { ok: r.ok, status: r.status, data: d };
+          });
+      })
+      .then(function (res) {
+        var d = res.data || {};
+        if (!res.ok) {
+          throw new Error(d.error || ("Ошибка поиска: HTTP " + res.status));
+        }
+        if (d.error && !d.html) {
+          throw new Error(d.error);
+        }
         mount.innerHTML = d.html || "";
         if (updateHistory && window.history && window.history.pushState) {
           window.history.pushState({}, "", searchUrlForHistory());
@@ -259,8 +272,9 @@
           pushRecent((input && input.value) || "", (siteSel && siteSel.value) || "all");
         }
       })
-      .catch(function () {
-        mount.innerHTML = '<div class="alert">Не удалось выполнить запрос. Попробуйте ещё раз.</div>';
+      .catch(function (e) {
+        var msg = (e && e.message) ? e.message : "Не удалось выполнить запрос. Попробуйте ещё раз.";
+        mount.innerHTML = '<div class="alert">' + msg + '</div>';
       })
       .finally(function () {
         loading.hidden = true;
