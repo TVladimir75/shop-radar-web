@@ -33,7 +33,7 @@ from app.suggestions import suggest as suggest_products
 
 BASE = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
-logger = logging.getLogger("shop_radar.vision")
+logger = logging.getLogger("uvicorn.error")
 
 
 def _page_ctx(request: Request, **kwargs):
@@ -400,12 +400,12 @@ async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
         ]
     }
 
-    logger.info("vision_request_start size_bytes=%s", len(raw))
+    logger.warning("vision_request_start size_bytes=%s", len(raw))
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(url, params={"key": key}, json=payload)
             r.raise_for_status()
-            logger.info(
+            logger.warning(
                 "vision_request_ok status=%s response_bytes=%s",
                 r.status_code,
                 len(r.text or ""),
