@@ -11,7 +11,7 @@
     <header class="head">
       <p class="lead-tool-nav"><a href="/">← Shop Radar</a></p>
       <h1>Подбор поставщиков</h1>
-      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Можно писать по-русски: перед поиском запрос переводится в английский для площадок. Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
+      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Можно писать по-русски: перед поиском запрос переводится в английский для площадок. Для <strong>Pinduoduo</strong> и остальных площадок доступен <strong>поиск по фото</strong>: загрузите снимок — распознаётся объект, подставляется текст и выполняется обычная выдача (нужен ключ Google Vision на сервере). Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
     </header>
 
     <form id="search-form" class="card" method="post" action="/search">
@@ -28,6 +28,15 @@
         />
         <ul id="product-suggest" class="suggest-list" hidden></ul>
       </label>
+      <div class="field vision-field">
+        <span>Поиск по фото (в том числе Pinduoduo)</span>
+        <span class="field-hint">Выберите фото товара — в поле выше подставится распознанный запрос; поиск пойдёт по уже выбранной площадке (включая только Pinduoduo).</span>
+        <div class="vision-row">
+          <input type="file" id="vision-file" accept="image/*" aria-label="Фото товара для распознавания"/>
+          <button type="button" class="btn btn-secondary" id="vision-search-btn">Распознать и искать</button>
+        </div>
+        <p id="vision-status" class="vision-status" role="status" aria-live="polite"></p>
+      </div>
       <label class="field">
         <span>Площадка</span>
         <select name="site_id" id="site-id-select">
@@ -248,6 +257,8 @@
       });
   }
 
+  window.__shopRadarRunSearch = runSearch;
+
   if (form) {
     form.addEventListener("submit", function (e) {
       var q = (input && input.value || "").trim();
@@ -280,6 +291,62 @@
 
   window.addEventListener("popstate", function () {
     window.location.reload();
+  });
+})();
+
+(function () {
+  var fileInput = document.getElementById("vision-file");
+  var visionBtn = document.getElementById("vision-search-btn");
+  var visionStatus = document.getElementById("vision-status");
+  var textInput = document.getElementById("product-input");
+  if (!fileInput || !visionBtn || !textInput) return;
+
+  function setVisionMsg(text, isError) {
+    if (!visionStatus) return;
+    visionStatus.textContent = text || "";
+    visionStatus.hidden = !text;
+    visionStatus.className = "vision-status" + (isError ? " vision-status-error" : "");
+  }
+
+  visionBtn.addEventListener("click", function () {
+    var f = fileInput.files && fileInput.files[0];
+    if (!f) {
+      setVisionMsg("Выберите файл изображения.", true);
+      return;
+    }
+    setVisionMsg("Распознаём фото…", false);
+    visionBtn.disabled = true;
+    var fd = new FormData();
+    fd.append("image", f);
+    fetch("/api/vision-to-query", { method: "POST", body: fd })
+      .then(function (r) {
+        return r.json().then(function (d) {
+          return { ok: r.ok, status: r.status, data: d };
+        });
+      })
+      .then(function (res) {
+        if (!res.ok || res.data.error) {
+          setVisionMsg(res.data.error || ("Ошибка API: " + res.status), true);
+          return;
+        }
+        var q = (res.data.query || "").trim();
+        if (!q) {
+          setVisionMsg("Не удалось получить запрос из фото.", true);
+          return;
+        }
+        textInput.value = q;
+        setVisionMsg("Запрос: «" + q + "» — загружаем выдачу…", false);
+        if (typeof window.__shopRadarRunSearch === "function") {
+          window.__shopRadarRunSearch(true);
+        }
+        setVisionMsg("");
+      })
+      .catch(function () {
+        setVisionMsg("Сеть или сервер недоступны. Попробуйте ещё раз.", true);
+      })
+      .finally(function () {
+        visionBtn.disabled = false;
+      });
   });
 })();
     </script>

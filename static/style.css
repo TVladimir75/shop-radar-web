@@ -32,6 +32,32 @@ body {
 .field { display: block; margin-bottom: 16px; }
 .field.autocomplete { position: relative; }
 .field span { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
+.field-hint {
+  display: block;
+  font-weight: 400;
+  color: #718096;
+  font-size: 0.82rem;
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
+.vision-field .vision-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.vision-field input[type="file"] {
+  font-size: 0.95rem;
+  max-width: 100%;
+}
+.vision-status {
+  margin: 10px 0 0;
+  font-size: 0.88rem;
+  color: #4a5568;
+}
+.vision-status-error {
+  color: #c53030;
+}
 .field input, .field select {
   width: 100%;
   max-width: 100%;
