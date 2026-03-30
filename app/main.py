@@ -44,12 +44,11 @@ def _page_ctx(request: Request, **kwargs):
 
 SITES = [
     {"id": "all", "label": "Все: MIC + Alibaba + 1688 + Taobao", "active": True},
+    {"id": "pinduoduo", "label": "Pinduoduo.com — крупнейшая розница КНР", "active": True},
     {"id": "mic", "label": "Made-in-China.com", "active": True},
     {"id": "alibaba", "label": "Alibaba.com (showroom)", "active": True},
     {"id": "1688", "label": "1688.com", "active": True},
     {"id": "taobao", "label": "Taobao.com", "active": True},
-    # В конце списка: вне КНР часто экран входа и «推荐», а не поиск.
-    {"id": "pinduoduo", "label": "Pinduoduo (эксперимент: нужен Китай / приложение)", "active": True},
 ]
 
 _SITE_IDS = {s["id"] for s in SITES}

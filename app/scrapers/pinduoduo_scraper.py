@@ -5,8 +5,11 @@
 - затем пробуем вытащить карточки товара по ссылкам `goods2.html?goods_id=...`;
 - цену пытаемся найти эвристически рядом с ссылкой (символ `¥`/`￥` в локальном тексте).
 
-Без residential proxy успех может быть не 100% — в таком случае поднимем RuntimeError,
-чтобы на UI показать понятную ошибку (а не падение приложения).
+Переменные окружения:
+- PINDUODUO_PROXY или PLAYWRIGHT_PROXY — HTTP(S)/SOCKS5 с резидентским IP КНР (часто единственный
+  способ получить выдачу как в приложении, а не «推荐»/экран входа).
+
+Без прокси с «облачных» IP успех ограничен — тогда поднимем RuntimeError с понятным текстом.
 """
 
 from __future__ import annotations
@@ -34,6 +37,48 @@ PINDUODUO_MOBILE_UA = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
     "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 )
+
+_PDD_EXTRA_HEADERS = {
+    "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+
+def _playwright_proxy_from_env() -> dict[str, str] | None:
+    """HTTP(S)/SOCKS5 из PINDUODUO_PROXY или PLAYWRIGHT_PROXY (user:pass@host:port поддерживается)."""
+    raw = (
+        os.environ.get("PINDUODUO_PROXY") or os.environ.get("PLAYWRIGHT_PROXY") or ""
+    ).strip()
+    if not raw:
+        return None
+    try:
+        u = urlparse(raw)
+        if not u.hostname:
+            return None
+        scheme = (u.scheme or "http").lower()
+        if scheme not in ("http", "https", "socks5"):
+            scheme = "http"
+        port = u.port
+        if port is None:
+            port = {"http": 8080, "https": 443, "socks5": 1080}.get(scheme, 8080)
+        server = f"{scheme}://{u.hostname}:{port}"
+        cfg: dict[str, str] = {"server": server}
+        if u.username:
+            cfg["username"] = unquote_plus(u.username)
+        if u.password:
+            cfg["password"] = unquote_plus(u.password)
+        return cfg
+    except Exception:
+        return None
+
+
+def _pdd_env_hint() -> str:
+    if _playwright_proxy_from_env():
+        return ""
+    return (
+        " Для стабильной выдачи задайте на сервере PINDUODUO_PROXY (HTTP/SOCKS5 с IP в КНР) — см. ДЕПЛОЙ.txt."
+    )
+
 
 # Токены запроса (латиница) → типичные иероглифы в названии карточки на PDD.
 _QUERY_EN_CN: tuple[tuple[str, str], ...] = (
@@ -304,11 +349,17 @@ async def fetch_suppliers(
         html = ""
         title = ""
         try:
-            context = await browser.new_context(
-                viewport={"width": 390, "height": 844},
-                user_agent=PINDUODUO_MOBILE_UA,
-                locale="zh-CN",
-            )
+            ctx_kw: dict[str, Any] = {
+                "viewport": {"width": 390, "height": 844},
+                "user_agent": PINDUODUO_MOBILE_UA,
+                "locale": "zh-CN",
+                "timezone_id": "Asia/Shanghai",
+                "extra_http_headers": dict(_PDD_EXTRA_HEADERS),
+            }
+            _px = _playwright_proxy_from_env()
+            if _px:
+                ctx_kw["proxy"] = _px
+            context = await browser.new_context(**ctx_kw)
             page = await context.new_page()
             # Немного увеличиваем таймаут — мобильные страницы иногда грузят дольше.
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
@@ -363,8 +414,8 @@ async def fetch_suppliers(
     if not _looks_like_search_url(final_url):
         raise RuntimeError(
             "Pinduoduo: открылась не страница поиска (часто редирект на главную с вкладкой «推荐»). "
-            "Сервер вне Китая/без сессии так видит сайт — выдача будет случайной. "
-            "Попробуйте текстовый запрос точнее или другую сеть."
+            "Сервер вне Китая так видит сайт без резидентского IP."
+            + _pdd_env_hint()
         )
 
     # В HTML много goods_id (реклама, рекомендации). Собираем кандидатов и
@@ -434,6 +485,7 @@ async def fetch_suppliers(
         # но сигнализировать «почему» пользователю/себе.
         raise RuntimeError(
             "Pinduoduo: не удалось извлечь карточки товара (нет goods_name/price в HTML)."
+            + _pdd_env_hint()
         )
 
     max_rel = max(c["_rel"] for c in candidates)
@@ -447,9 +499,9 @@ async def fetch_suppliers(
         ):
             raise RuntimeError(
                 "Pinduoduo: открылась главная с вкладкой «推荐», а не поиск по запросу "
-                "(в адресе есть keyword, но в разметке нет ваших слов — как на вашем скриншоте). "
-                "С дата-центра/без китайского IP сайт часто подсовывает общую ленту. "
-                "Откройте ссылку «Pinduoduo» внизу через VPN к КНР или в приложении."
+                "(в адресе есть keyword, но в разметке нет ваших слов). "
+                "С облачного IP без китайского «резидента» так часто и бывает. "
+                "Решение: переменная окружения PINDUODUO_PROXY (HTTP/SOCKS5 с IP КНР) на Render, либо VPN в Китай."
             )
         if len(candidates) >= 12 and echoed:
             warn = (
@@ -465,7 +517,8 @@ async def fetch_suppliers(
             return out_fb
         raise RuntimeError(
             "Pinduoduo: в разметке нет карточек, похожих на запрос (часто лента «推荐», а не поиск). "
-            "Уточните текст (китайский/английский) или попробуйте сеть ближе к Китаю."
+            "Уточните запрос или подключите прокси с IP КНР."
+            + _pdd_env_hint()
         )
     floor = 1
     if max_rel >= 6:
