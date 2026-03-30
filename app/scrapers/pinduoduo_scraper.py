@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 from playwright.async_api import async_playwright
 
@@ -26,6 +26,8 @@ from app.scrapers.common import b2b_path_slug
 
 
 PINDUODUO_SEARCH_BASE = "https://mobile.yangkeduo.com/search_result.h"
+# Запасной вариант — иногда .h редиректит на главную, а .html держит выдачу.
+PINDUODUO_SEARCH_ALT = "https://mobile.yangkeduo.com/search_result.html"
 
 # Настоящий мобильный UA: меньше шансов получить «главную/рекламу» вместо блока выдачи.
 PINDUODUO_MOBILE_UA = (
@@ -116,6 +118,22 @@ def _unescape_json_str(s: str) -> str:
             return s
 
 
+def _looks_like_search_url(url: str) -> bool:
+    """Реальная страница поиска, а не главная «推荐» без keyword."""
+    if not url:
+        return False
+    u = url.lower()
+    if "search_result" in u:
+        return True
+    try:
+        qs = parse_qs(urlparse(url).query)
+        if qs.get("keyword") or qs.get("search_key"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _tokens_from_query(q: str, slug: str) -> set[str]:
     """Слова из запроса и из slug (дефисы → слова)."""
     raw = f"{q} {slug.replace('-', ' ')}"
@@ -139,14 +157,27 @@ def _relevance_score(name: str, tokens: set[str], q_lower: str) -> int:
     for t in tokens:
         if len(t) < 2:
             continue
-        if t in nl:
-            score += 4
-        if t in name:
-            score += 2
-    for en, cn in _QUERY_EN_CN:
-        if en in q_lower or any(en in x for x in tokens):
-            if cn in name:
+        try:
+            if re.search(rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", nl, re.I):
                 score += 5
+        except re.error:
+            if t in nl:
+                score += 4
+        if t in name:
+            score += 1
+    for en, cn in _QUERY_EN_CN:
+        try:
+            q_hit = bool(re.search(rf"(?<![a-z]){re.escape(en)}(?![a-z])", q_lower))
+        except re.error:
+            q_hit = en in q_lower
+        tok_hit = any(
+            re.search(rf"(?<![a-z0-9]){re.escape(en)}(?![a-z0-9])", x, re.I)
+            for x in tokens
+            if len(en) <= len(x)
+        )
+        if q_hit or tok_hit:
+            if cn in name:
+                score += 6
     return score
 
 
@@ -196,6 +227,9 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
                 browser = await p.chromium.launch(headless=True)
             else:
                 raise
+        final_url = ""
+        html = ""
+        title = ""
         try:
             context = await browser.new_context(
                 viewport={"width": 390, "height": 844},
@@ -206,6 +240,13 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
             # Немного увеличиваем таймаут — мобильные страницы иногда грузят дольше.
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
             await page.wait_for_timeout(2200)
+            final_url = page.url
+            # Частый кейс: search_result.h уводит на главную — тогда пробуем .html?keyword=
+            if not _looks_like_search_url(final_url):
+                alt = f"{PINDUODUO_SEARCH_ALT}?keyword={keyword}"
+                await page.goto(alt, wait_until="domcontentloaded", timeout=45000)
+                await page.wait_for_timeout(2200)
+                final_url = page.url
             try:
                 await page.evaluate(
                     "() => window.scrollTo(0, Math.min(document.body.scrollHeight, 1600))"
@@ -213,7 +254,6 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
                 await page.wait_for_timeout(1200)
             except Exception:
                 pass
-            final_url = page.url
             title = await page.title()
             html = await page.content()
         finally:
@@ -237,6 +277,13 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
     if "短信" in html:
         # Если SMS встречается в тексте страницы — это скорее всего реальная верификация.
         raise RuntimeError("Pinduoduo запрашивает подтверждение (SMS/верификация).")
+
+    if not _looks_like_search_url(final_url):
+        raise RuntimeError(
+            "Pinduoduo: открылась не страница поиска (часто редирект на главную с вкладкой «推荐»). "
+            "Сервер вне Китая/без сессии так видит сайт — выдача будет случайной. "
+            "Попробуйте текстовый запрос точнее или другую сеть."
+        )
 
     # В HTML много goods_id (реклама, рекомендации). Собираем кандидатов и
     # сортируем по релевантности к запросу — иначе в таблице «случайный мусор».
@@ -309,10 +356,23 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
         )
 
     max_rel = max(c["_rel"] for c in candidates)
-    if max_rel >= 2:
+    # Без совпадений возвращали «первые goods_id» — визуально тот же мусор, только быстрее.
+    if max_rel <= 0:
+        raise RuntimeError(
+            "Pinduoduo: в разметке нет карточек, похожих на запрос (часто лента «推荐», а не поиск). "
+            "Уточните текст (китайский/английский) или попробуйте сеть ближе к Китаю."
+        )
+    floor = 1
+    if max_rel >= 6:
+        floor = max(2, min(max_rel // 2, max_rel - 1))
+    filtered = [c for c in candidates if c["_rel"] >= floor]
+    if len(filtered) < min(3, max(1, len(candidates) // 4)):
         filtered = [c for c in candidates if c["_rel"] >= 1]
-        if len(filtered) >= min(limit, 5):
-            candidates = filtered
+    if not filtered:
+        raise RuntimeError(
+            "Pinduoduo: после отбора по релевантности не осталось позиций — запрос слишком общий или выдача «не та»."
+        )
+    candidates = filtered
 
     candidates.sort(
         key=lambda c: (
