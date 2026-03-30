@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 from typing import Any
-from urllib.parse import parse_qs, quote_plus, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote_plus, urlparse
 
 from playwright.async_api import async_playwright
 
@@ -131,6 +131,39 @@ def _looks_like_search_url(url: str) -> bool:
             return True
     except Exception:
         pass
+    return False
+
+
+def _url_keyword_equals(url: str, qn: str) -> bool:
+    try:
+        qs = parse_qs(urlparse(url).query)
+        raw = (qs.get("keyword") or qs.get("search_key") or [""])[0]
+        if not raw:
+            return False
+        return unquote_plus(raw).strip() == (qn or "").strip()
+    except Exception:
+        return False
+
+
+def _query_echoed_in_page_html(html: str, qn: str) -> bool:
+    """На настоящей выдаче запрос почти всегда встречается в JSON/HTML; на главной 推荐 — нет."""
+    if not html or not (qn or "").strip():
+        return True
+    q = (qn or "").strip()
+    needles: list[str] = [q, quote_plus(q)]
+    try:
+        needles.append(json.dumps(q, ensure_ascii=True)[1:-1])
+    except Exception:
+        pass
+    for n in needles:
+        if n and n in html:
+            return True
+    if not CJK_RE.search(q) and len(q) >= 4:
+        try:
+            if re.search(rf"(?<![a-z0-9]){re.escape(q)}(?![a-z0-9])", html, re.I):
+                return True
+        except re.error:
+            pass
     return False
 
 
@@ -407,10 +440,22 @@ async def fetch_suppliers(
     max_rel = max(c["_rel"] for c in candidates)
     # Нет ни одной релевантной карточки — типично лента 推荐 с посторонними товарами.
     if max_rel <= 0:
-        if len(candidates) >= 12:
+        echoed = _query_echoed_in_page_html(html, qn)
+        if (
+            not echoed
+            and _url_keyword_equals(final_url, qn)
+            and len(candidates) >= 8
+        ):
+            raise RuntimeError(
+                "Pinduoduo: открылась главная с вкладкой «推荐», а не поиск по запросу "
+                "(в адресе есть keyword, но в разметке нет ваших слов — как на вашем скриншоте). "
+                "С дата-центра/без китайского IP сайт часто подсовывает общую ленту. "
+                "Откройте ссылку «Pinduoduo» внизу через VPN к КНР или в приложении."
+            )
+        if len(candidates) >= 12 and echoed:
             warn = (
-                "Страница PDD похожа на рекомендации (推荐), не на поиск — совпадений с запросом не найдено. "
-                "Ниже первые карточки из HTML; уточните текст или откройте выдачу в браузере ближе к КНР. "
+                "Совпадений с запросом мало, но это похоже на страницу поиска. "
+                "Ниже первые карточки из выдачи — проверьте формулировку. "
             )
             out_fb: list[dict[str, Any]] = []
             for c in candidates[:limit]:
