@@ -16,18 +16,21 @@ SOURCE_TO_KEY = {
 }
 
 
-def platform_search_urls(prepared_query: str) -> dict[str, str]:
-    q = (prepared_query or "").strip() or "LED"
-    slug = b2b_path_slug(q)
-    enc = quote_path_segment(slug)
-    qp = quote_plus(q)
+def platform_search_urls(query_en: str, query_zh: str | None = None) -> dict[str, str]:
+    """MIC/Alibaba — латиница; 1688 / Taobao / Pinduoduo — китайский запрос, если передан."""
+    q_en = (query_en or "").strip() or "LED"
+    q_zh = ((query_zh if query_zh is not None else query_en) or "").strip() or q_en
+    slug_en = b2b_path_slug(q_en)
+    enc_en = quote_path_segment(slug_en)
+    qp_en = quote_plus(q_en)
+    qp_zh = quote_plus(q_zh)
     return {
-        "MIC": f"https://www.made-in-china.com/manufacturers/{enc}.html",
-        "Alibaba": f"https://www.alibaba.com/showroom/{enc}.html",
-        "1688": f"https://s.1688.com/selloffer/offer_search.htm?keywords={qp}",
-        "Taobao": f"https://s.taobao.com/search?commend=all&ie=utf8&q={qp}",
-        "AliExpress": f"https://www.aliexpress.com/wholesale?SearchText={qp}",
-        "Pinduoduo": f"https://mobile.yangkeduo.com/search_result.h?keyword={qp}",
+        "MIC": f"https://www.made-in-china.com/manufacturers/{enc_en}.html",
+        "Alibaba": f"https://www.alibaba.com/showroom/{enc_en}.html",
+        "1688": f"https://s.1688.com/selloffer/offer_search.htm?keywords={qp_zh}",
+        "Taobao": f"https://s.taobao.com/search?commend=all&ie=utf8&q={qp_zh}",
+        "AliExpress": f"https://www.aliexpress.com/wholesale?SearchText={qp_en}",
+        "Pinduoduo": f"https://mobile.yangkeduo.com/search_result.h?keyword={qp_zh}",
     }
 
 

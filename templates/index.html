@@ -11,12 +11,12 @@
     <header class="head">
       <p class="lead-tool-nav"><a href="/">← Shop Radar</a></p>
       <h1>Подбор поставщиков</h1>
-      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Можно писать по-русски: перед поиском запрос переводится в английский для площадок. <strong>Поиск по фото</strong> доступен только для площадки <strong>Pinduoduo</strong>: загрузите снимок — распознаётся объект. Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
+      <p class="lead">Выберите сайт и опишите товар — таблица отсортируется по рейтингу. Русский или английский ввод готовится в <strong>английский</strong> для MIC/Alibaba и в <strong>китайский</strong> для 1688, Taobao и Pinduoduo; и ручной ввод, и запрос после распознавания фото используют одну цепочку. <strong>Поиск по фото</strong> только у <strong>Pinduoduo</strong>. Работает в браузере{% if '127.0.0.1' in page_base_url or 'localhost' in page_base_url %} по ссылке на этот компьютер{% endif %}.</p>
     </header>
 
     <form id="search-form" class="card" method="post" action="/search">
       <label class="field autocomplete">
-        <span>Что ищете (товар / тема) — подсказки при наборе; русский текст после паузы подставится на английский</span>
+        <span>Что ищете (товар / тема) — подсказки при наборе; русский после паузы подставляется в английский в поле (для китайских сайтов сервер всё равно подберёт 中文 при поиске)</span>
         <input
           id="product-input"
           type="text"

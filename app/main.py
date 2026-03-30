@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.platform_links import platform_search_urls
-from app.query_translate import prepare_query_for_platforms
+from app.query_translate import prepare_search_queries
 from app.search_cache import get_cached, set_cached
 from app.search_pipeline import (
     attach_platform_links,
@@ -82,46 +82,52 @@ async def _wait_first(
     raise last  # pragma: no cover
 
 
-async def _fetch_raw_rows(product: str, site_id: str) -> tuple[list[dict], str | None]:
+async def _fetch_raw_rows(
+    query_en: str, query_zh: str, site_id: str
+) -> tuple[list[dict], str | None]:
+    """query_en — MIC/Alibaba; query_zh — 1688, Taobao, Pinduoduo (иероглифы предпочтительнее)."""
     notes: list[str] = []
     merged: list[dict] = []
+    q_intl = (query_en or "").strip()
+    q_cn = (query_zh or query_en or "").strip() or q_intl
 
     if site_id == "mic":
-        merged = await fetch_mic(product, limit=35)
+        merged = await fetch_mic(q_intl, limit=35)
     elif site_id == "alibaba":
-        merged = await fetch_alibaba(product, limit=35)
+        merged = await fetch_alibaba(q_intl, limit=35)
     elif site_id == "1688":
         try:
-            merged = await _wait_first(fetch_1688, product, 30, 20.0, retries=1)
+            merged = await _wait_first(fetch_1688, q_cn, 30, 20.0, retries=1)
         except asyncio.TimeoutError:
             raise ValueError(
                 "1688.com: нет ответа за отведённое время (часто недоступен вне Китая)."
             ) from None
     elif site_id == "taobao":
         try:
-            merged = await _wait_first(fetch_taobao, product, 30, 18.0, retries=1)
+            merged = await _wait_first(fetch_taobao, q_cn, 30, 18.0, retries=1)
         except asyncio.TimeoutError:
             raise ValueError(
                 "Taobao: нет ответа за отведённое время (часто недоступен вне Китая)."
             ) from None
     elif site_id == "pinduoduo":
-        merged = await fetch_pinduoduo(product, limit=30)
+        merged = await fetch_pinduoduo(q_cn, limit=30)
     elif site_id == "all":
-        for fn, label, lim, tmo in (
-            (fetch_mic, "Made-in-China", 18, None),
-            (fetch_alibaba, "Alibaba", 18, None),
-            (fetch_1688, "1688", 8, 16.0),
-            (fetch_taobao, "Taobao", 8, 14.0),
+        for fn, label, lim, tmo, use_cn in (
+            (fetch_mic, "Made-in-China", 18, None, False),
+            (fetch_alibaba, "Alibaba", 18, None, False),
+            (fetch_1688, "1688", 8, 16.0, True),
+            (fetch_taobao, "Taobao", 8, 14.0, True),
         ):
+            q = q_cn if use_cn else q_intl
             try:
                 if label in ("1688", "Taobao") and tmo is not None:
-                    part = await _wait_first(fn, product, lim, tmo, retries=1)
+                    part = await _wait_first(fn, q, lim, tmo, retries=1)
                 elif tmo is not None:
                     part = await asyncio.wait_for(
-                        fn(product, limit=lim), timeout=tmo
+                        fn(q, limit=lim), timeout=tmo
                     )
                 else:
-                    part = await fn(product, limit=lim)
+                    part = await fn(q, limit=lim)
                 merged.extend(part)
             except asyncio.TimeoutError:
                 notes.append(
@@ -136,14 +142,17 @@ async def _fetch_raw_rows(product: str, site_id: str) -> tuple[list[dict], str |
 
 
 async def _load_rows(
-    product_key: str, site_id: str
+    cache_key: str,
+    site_id: str,
+    query_en: str,
+    query_zh: str,
 ) -> tuple[list[dict], str | None, bool]:
-    hit = await get_cached(site_id, product_key)
+    hit = await get_cached(site_id, cache_key)
     if hit is not None:
         rows, notes = hit
         return rows, notes, True
-    rows, notes = await _fetch_raw_rows(product_key, site_id)
-    await set_cached(site_id, product_key, rows, notes)
+    rows, notes = await _fetch_raw_rows(query_en, query_zh, site_id)
+    await set_cached(site_id, cache_key, rows, notes)
     return rows, notes, False
 
 
@@ -530,6 +539,7 @@ async def _build_search_block_context(
     cache_note: str | None = None
     row_count_unfiltered = 0
     query_used = ""
+    query_zh = ""
 
     product_stripped = (product or "").strip()
     if not product_stripped:
@@ -537,6 +547,7 @@ async def _build_search_block_context(
             "rows": None,
             "row_count_unfiltered": 0,
             "query_used": "",
+            "query_zh": "",
             "platform_urls": {},
             "error": None,
             "merge_note": None,
@@ -554,14 +565,17 @@ async def _build_search_block_context(
 
     rows_out: list[dict] | None = None
     try:
-        query_used = await prepare_query_for_platforms(product_stripped)
-        raw, merge_note, from_cache = await _load_rows(query_used, site_id)
+        query_used, query_zh = await prepare_search_queries(product_stripped)
+        cache_key = f"{query_used}\x1e{query_zh}"
+        raw, merge_note, from_cache = await _load_rows(
+            cache_key, site_id, query_used, query_zh
+        )
         if from_cache:
             cache_note = "Показан кэш сырой выдачи (~15 мин), без повторного запроса к площадкам."
 
         scored = score_rows(raw)
         row_count_unfiltered = len(scored)
-        urls = platform_search_urls(query_used)
+        urls = platform_search_urls(query_used, query_zh)
         attach_platform_links(scored, urls)
         filtered = filter_scored(
             scored,
@@ -588,7 +602,10 @@ async def _build_search_block_context(
         "rows": rows_out,
         "row_count_unfiltered": row_count_unfiltered,
         "query_used": query_used,
-        "platform_urls": platform_search_urls(query_used) if query_used else {},
+        "query_zh": query_zh,
+        "platform_urls": (
+            platform_search_urls(query_used, query_zh) if query_used else {}
+        ),
         "error": error,
         "merge_note": merge_note,
         "cache_note": cache_note,
@@ -642,7 +659,7 @@ async def _render_search_page(
             sites=SITES,
             search_block_html=_render_search_block_html(request, block),
             **{k: block[k] for k in (
-                "rows", "row_count_unfiltered", "query_used", "platform_urls",
+                "rows", "row_count_unfiltered", "query_used", "query_zh", "platform_urls",
                 "error", "merge_note", "cache_note",
                 "filter_site", "name_contains", "only_price", "only_mfg",
                 "site_id", "query", "export_qs",
@@ -675,7 +692,7 @@ async def tool_home(request: Request) -> HTMLResponse:
             sites=SITES,
             search_block_html=_render_search_block_html(request, empty),
             **{k: empty[k] for k in (
-                "rows", "row_count_unfiltered", "query_used", "platform_urls",
+                "rows", "row_count_unfiltered", "query_used", "query_zh", "platform_urls",
                 "error", "merge_note", "cache_note",
                 "filter_site", "name_contains", "only_price", "only_mfg",
                 "site_id", "query", "export_qs",
@@ -694,10 +711,10 @@ async def api_suggest(q: str = Query("", max_length=120)) -> JSONResponse:
 async def api_translate_query(q: str = Query("", max_length=300)) -> JSONResponse:
     raw = (q or "").strip()
     if not raw:
-        return JSONResponse({"en": "", "changed": False})
-    en = await prepare_query_for_platforms(raw)
-    changed = en != raw
-    return JSONResponse({"en": en, "changed": changed})
+        return JSONResponse({"en": "", "zh": "", "changed": False})
+    en, zh = await prepare_search_queries(raw)
+    changed = en != raw or zh != raw
+    return JSONResponse({"en": en, "zh": zh, "changed": changed})
 
 
 @app.post("/api/vision-to-query")
@@ -809,6 +826,7 @@ async def api_search_result(
             {
                 "html": html,
                 "query_used": ctx["query_used"],
+                "query_zh": ctx.get("query_zh", ""),
                 "merge_note": ctx["merge_note"],
                 "cache_note": ctx["cache_note"],
                 "error": ctx["error"],
@@ -822,6 +840,7 @@ async def api_search_result(
             {
                 "html": '<div class="alert">Ошибка поиска: внутренняя ошибка обработки результата.</div>',
                 "query_used": "",
+                "query_zh": "",
                 "merge_note": None,
                 "cache_note": None,
                 "error": f"Внутренняя ошибка: {e!s}",
@@ -926,7 +945,6 @@ async def search_post(
     if not product:
         return await _render_search_page(request, "", site_id)
 
-    product_prepared = await prepare_query_for_platforms(product)
     loc = str(request.url_for("search_page"))
-    loc = f"{loc}?{_export_query(product_prepared, site_id, '', '', False, False)}"
+    loc = f"{loc}?{_export_query(product, site_id, '', '', False, False)}"
     return RedirectResponse(loc, status_code=303)

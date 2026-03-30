@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.platform_links import row_platform_search_url, platform_search_urls
+from app.platform_links import row_platform_search_url
 from app.scoring import score_row, score_to_stars
 
 

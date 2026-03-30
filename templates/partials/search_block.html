@@ -10,9 +10,15 @@
 
 {% if query_used %}
 <p class="query-used">
-  <span class="query-used-label">Запрос на площадках (после перевода):</span>
+  <span class="query-used-label">Запрос для MIC / Alibaba (латиница):</span>
   <code class="query-used-text">{{ query_used }}</code>
 </p>
+{% if query_zh and query_zh != query_used %}
+<p class="query-used query-used-zh">
+  <span class="query-used-label">Тот же смысл для 1688, Taobao, Pinduoduo (中文):</span>
+  <code class="query-used-text">{{ query_zh }}</code>
+</p>
+{% endif %}
 <p class="platform-links" role="navigation" aria-label="Поиск на площадках">
   {% if platform_urls %}
   <span class="platform-links-label">Открыть выдачу сайта:</span>

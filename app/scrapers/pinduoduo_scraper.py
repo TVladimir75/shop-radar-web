@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, quote_plus, urlparse
 
 from playwright.async_api import async_playwright
 
-from app.scrapers.common import b2b_path_slug
+from app.scrapers.common import CJK_RE, b2b_path_slug, normalize_product_query_for_slug
 
 
 PINDUODUO_SEARCH_BASE = "https://mobile.yangkeduo.com/search_result.h"
@@ -193,12 +193,17 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
     # Render часто не передаёт PLAYWRIGHT_BROWSERS_PATH в рантайм, поэтому
     # задаём его явно, чтобы Playwright искал бинарник в одном и том же месте.
     os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/render/cache/ms-playwright")
-    # Pinduoduo мобильная выдача обычно любит латиницу/англ. slug-подход как в других.
-    slug = b2b_path_slug(q)
-    keyword = quote_plus(slug)
+    # Латиницу кодируем как slug; чистый китайский/смешанный — целиком в keyword (иначе «product»).
+    qn = normalize_product_query_for_slug(q).strip() or q
+    slug = b2b_path_slug(qn)
+    if CJK_RE.search(qn) or slug == "product":
+        keyword = quote_plus(qn)
+    else:
+        keyword = quote_plus(slug)
     url = f"{PINDUODUO_SEARCH_BASE}?keyword={keyword}"
-    q_lower = q.lower()
-    tokens = _tokens_from_query(q, slug)
+    q_lower = qn.lower()
+    slug_tok = slug if slug != "product" else ""
+    tokens = _tokens_from_query(qn, slug_tok)
 
     async with async_playwright() as p:
         try:
