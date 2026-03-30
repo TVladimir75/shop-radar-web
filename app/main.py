@@ -5,6 +5,7 @@ import base64
 import csv
 import os
 import io
+import logging
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -32,6 +33,7 @@ from app.suggestions import suggest as suggest_products
 
 BASE = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+logger = logging.getLogger("shop_radar.vision")
 
 
 def _page_ctx(request: Request, **kwargs):
@@ -398,16 +400,29 @@ async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
         ]
     }
 
+    logger.info("vision_request_start size_bytes=%s", len(raw))
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(url, params={"key": key}, json=payload)
             r.raise_for_status()
-    except httpx.HTTPStatusError:
+            logger.info(
+                "vision_request_ok status=%s response_bytes=%s",
+                r.status_code,
+                len(r.text or ""),
+            )
+    except httpx.HTTPStatusError as e:
+        body_preview = (e.response.text or "")[:400].replace("\n", " ")
+        logger.error(
+            "vision_request_http_status_error status=%s body_preview=%s",
+            e.response.status_code,
+            body_preview,
+        )
         return JSONResponse(
             {"error": "Не удалось распознать фото. Попробуйте другое изображение или позже."},
             status_code=502,
         )
-    except httpx.HTTPError:
+    except httpx.HTTPError as e:
+        logger.error("vision_request_http_error type=%s detail=%s", type(e).__name__, str(e))
         return JSONResponse(
             {"error": "Не удалось распознать фото. Попробуйте позже."},
             status_code=502,
