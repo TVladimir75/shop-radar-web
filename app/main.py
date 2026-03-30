@@ -372,7 +372,7 @@ async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
     key = os.environ.get("GOOGLE_VISION_KEY")
     if not key:
         return JSONResponse(
-            {"error": "GOOGLE_VISION_KEY не задан. Установите ключ в переменных окружения."},
+            {"error": "Поиск по фото сейчас недоступен."},
             status_code=400,
         )
 
@@ -402,20 +402,14 @@ async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(url, params={"key": key}, json=payload)
             r.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        hint = ""
-        if e.response.status_code == 403:
-            hint = (
-                " В Google Cloud: включите API «Cloud Vision», привяжите биллинг, "
-                "снимите лишние ограничения ключа (API / реферер). Если ключ светился в открытом виде — лучше перевыпустить."
-            )
+    except httpx.HTTPStatusError:
         return JSONResponse(
-            {"error": f"Google Vision API ({e.response.status_code}): {e!s}.{hint}"},
+            {"error": "Не удалось распознать фото. Попробуйте другое изображение или позже."},
             status_code=502,
         )
-    except httpx.HTTPError as e:
+    except httpx.HTTPError:
         return JSONResponse(
-            {"error": f"Google Vision API error: {e!s}"},
+            {"error": "Не удалось распознать фото. Попробуйте позже."},
             status_code=502,
         )
 
