@@ -11,8 +11,12 @@
 
 from __future__ import annotations
 
-import re
+import asyncio
 import json
+import os
+import re
+import subprocess
+import sys
 from typing import Any
 from urllib.parse import quote_plus, urljoin
 
@@ -23,6 +27,9 @@ from app.scrapers.common import CHROME_UA, BROWSER_HEADERS, b2b_path_slug, quote
 
 
 PINDUODUO_SEARCH_BASE = "https://mobile.yangkeduo.com/search_result.h"
+
+_PW_INSTALL_LOCK = asyncio.Lock()
+_PW_INSTALL_DONE = False
 
 
 _GOODS_RE = re.compile(r"goods2\.html\?goods_id=(\d+)", re.I)
@@ -89,7 +96,38 @@ async def fetch_suppliers(product_query: str, limit: int = 25) -> list[dict[str,
     url = f"{PINDUODUO_SEARCH_BASE}?keyword={keyword}"
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        try:
+            browser = await p.chromium.launch(headless=True)
+        except Exception as e:
+            msg = str(e)
+            # На Render иногда забывают шаг `playwright install`, поэтому бинарника нет.
+            if "Executable doesn't exist" in msg or "chrome-headless-shell" in msg:
+                async with _PW_INSTALL_LOCK:
+                    global _PW_INSTALL_DONE
+                    if not _PW_INSTALL_DONE:
+                        browsers_path = os.environ.get(
+                            "PLAYWRIGHT_BROWSERS_PATH", "/opt/render/cache/ms-playwright"
+                        )
+                        env = os.environ.copy()
+                        env["PLAYWRIGHT_BROWSERS_PATH"] = browsers_path
+                        subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "playwright",
+                                "install",
+                                "chromium",
+                            ],
+                            check=True,
+                            env=env,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                        )
+                        _PW_INSTALL_DONE = True
+                browser = await p.chromium.launch(headless=True)
+            else:
+                raise
         try:
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 720},
