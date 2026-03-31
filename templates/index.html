@@ -11,7 +11,7 @@
     <header class="head">
       <p class="lead-tool-nav"><a href="/">← Shop Radar</a></p>
       <h1>Подбор поставщиков</h1>
-      <p class="lead"><strong>Pinduoduo</strong> — приоритет для розницы и низких цен; запрос готовится в <strong>китайский</strong>, плюс английский подсказкой для релевантности. Сервера вне КНР без прокси часто видят экран входа или «推荐» — тогда в Render задайте <code>PINDUODUO_PROXY</code> (см. <code>ДЕПЛОЙ.txt</code>). Для опта параллельно есть <strong>«Все»</strong>, MIC и Alibaba. <strong>Поиск по фото</strong> только при выборе Pinduoduo.</p>
+      <p class="lead">Сервис подбирает поставщиков на <strong>Made-in-China</strong> и <strong>Alibaba</strong>. Запрос готовится в <strong>английский</strong> для оптовых витрин B2B; можно вводить по-русски — после небольшой паузы фраза подставится в поле на английском.</p>
     </header>
 
     <form id="search-form" class="card" method="post" action="/search">
@@ -38,18 +38,6 @@
           {% endfor %}
         </select>
       </label>
-      <p class="field-hint pdd-caveat" id="pdd-caveat" {% if site_id != 'pinduoduo' %}hidden{% endif %}>
-        <strong>Pinduoduo:</strong> выдача как в приложении почти всегда требует <strong>IP из Китая</strong>. На Render добавьте переменную <code>PINDUODUO_PROXY=http://user:pass@хост:порт</code> (или SOCKS5). Локально можно задать то же в окружении перед запуском.
-      </p>
-      <div class="field vision-field" id="vision-field-wrap" {% if site_id != 'pinduoduo' %}hidden{% endif %}>
-        <span>Поиск по фото (Pinduoduo)</span>
-        <span class="field-hint">Фото превращается в текстовый запрос и уходит в ту же цепочку, что и ручной ввод.</span>
-        <div class="vision-row">
-          <input type="file" id="vision-file" accept="image/*" aria-label="Фото товара для распознавания"/>
-          <button type="button" class="btn btn-secondary" id="vision-search-btn">Распознать и искать</button>
-        </div>
-        <p id="vision-status" class="vision-status" role="status" aria-live="polite"></p>
-      </div>
       <button type="submit" class="btn" id="search-submit-btn">Показать по рейтингу</button>
     </form>
 
@@ -155,22 +143,7 @@
   var recentChips = document.getElementById("recent-chips");
   var RECENT_KEY = "shop-radar-recent-v1";
 
-  function syncVisionVisibility() {
-    var wrap = document.getElementById("vision-field-wrap");
-    var cave = document.getElementById("pdd-caveat");
-    if (!siteSel) return;
-    var pdd = siteSel.value === "pinduoduo";
-    if (wrap) {
-      if (pdd) wrap.removeAttribute("hidden");
-      else wrap.setAttribute("hidden", "");
-    }
-    if (cave) {
-      if (pdd) cave.removeAttribute("hidden");
-      else cave.setAttribute("hidden", "");
-    }
-  }
-  if (siteSel) siteSel.addEventListener("change", syncVisionVisibility);
-  syncVisionVisibility();
+  function syncVisionVisibility() {}
 
   function readRecent() {
     try {
@@ -334,61 +307,7 @@
   });
 })();
 
-(function () {
-  var fileInput = document.getElementById("vision-file");
-  var visionBtn = document.getElementById("vision-search-btn");
-  var visionStatus = document.getElementById("vision-status");
-  var textInput = document.getElementById("product-input");
-  if (!fileInput || !visionBtn || !textInput) return;
-
-  function setVisionMsg(text, isError) {
-    if (!visionStatus) return;
-    visionStatus.textContent = text || "";
-    visionStatus.hidden = !text;
-    visionStatus.className = "vision-status" + (isError ? " vision-status-error" : "");
-  }
-
-  visionBtn.addEventListener("click", function () {
-    var f = fileInput.files && fileInput.files[0];
-    if (!f) {
-      setVisionMsg("Выберите файл изображения.", true);
-      return;
-    }
-    setVisionMsg("Распознаём фото…", false);
-    visionBtn.disabled = true;
-    var fd = new FormData();
-    fd.append("image", f);
-    fetch("/api/vision-to-query", { method: "POST", body: fd })
-      .then(function (r) {
-        return r.json().then(function (d) {
-          return { ok: r.ok, status: r.status, data: d };
-        });
-      })
-      .then(function (res) {
-        if (!res.ok || res.data.error) {
-          setVisionMsg(res.data.error || ("Ошибка API: " + res.status), true);
-          return;
-        }
-        var q = (res.data.query || "").trim();
-        if (!q) {
-          setVisionMsg("Не удалось получить запрос из фото.", true);
-          return;
-        }
-        textInput.value = q;
-        setVisionMsg("Распознано: «" + q + "». Загружаем выдачу…", false);
-        if (typeof window.__shopRadarRunSearch === "function") {
-          window.__shopRadarRunSearch(true);
-        }
-        setVisionMsg("");
-      })
-      .catch(function () {
-        setVisionMsg("Сеть или сервер недоступны. Попробуйте ещё раз.", true);
-      })
-      .finally(function () {
-        visionBtn.disabled = false;
-      });
-  });
-})();
+// Поиск по фото отключён.
     </script>
 
     <footer class="foot-site">

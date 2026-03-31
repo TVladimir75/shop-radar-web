@@ -8,12 +8,6 @@
 <div class="cache-note">{{ cache_note }}</div>
 {% endif %}
 
-{% if site_id == 'pinduoduo' %}
-<div class="merge-note">
-  <strong>Pinduoduo:</strong> стабильная выдача с сервера — через <code>PINDUODUO_PROXY</code> с IP КНР (файл <code>ДЕПЛОЙ.txt</code>). Ссылка «Pinduoduo» открывает тот же поиск, что и скрапер.
-</div>
-{% endif %}
-
 {% if query_used %}
 <p class="query-used">
   <span class="query-used-label">Запрос для MIC / Alibaba (латиница):</span>
@@ -21,7 +15,7 @@
 </p>
 {% if query_zh and query_zh != query_used %}
 <p class="query-used query-used-zh">
-  <span class="query-used-label">Тот же смысл для 1688, Taobao, Pinduoduo (中文):</span>
+  <span class="query-used-label">Перевод запроса на 中文 (для открытия выдачи на китайских сайтах):</span>
   <code class="query-used-text">{{ query_zh }}</code>
 </p>
 {% endif %}
@@ -30,9 +24,6 @@
   <span class="platform-links-label">Открыть выдачу сайта:</span>
   {% if platform_urls.get('MIC') %}<a class="plat-chip" href="{{ platform_urls['MIC'] }}" target="_blank" rel="noopener">MIC</a>{% endif %}
   {% if platform_urls.get('Alibaba') %}<a class="plat-chip" href="{{ platform_urls['Alibaba'] }}" target="_blank" rel="noopener">Alibaba</a>{% endif %}
-  {% if platform_urls.get('1688') %}<a class="plat-chip" href="{{ platform_urls['1688'] }}" target="_blank" rel="noopener">1688</a>{% endif %}
-  {% if platform_urls.get('Taobao') %}<a class="plat-chip" href="{{ platform_urls['Taobao'] }}" target="_blank" rel="noopener">Taobao</a>{% endif %}
-  {% if platform_urls.get('Pinduoduo') %}<a class="plat-chip" href="{{ platform_urls['Pinduoduo'] }}" target="_blank" rel="noopener">Pinduoduo</a>{% endif %}
   {% endif %}
 </p>
 {% endif %}
@@ -49,9 +40,6 @@
         <option value="" {% if not filter_site %}selected{% endif %}>Все</option>
         <option value="mic" {% if filter_site == "mic" %}selected{% endif %}>Made-in-China</option>
         <option value="alibaba" {% if filter_site == "alibaba" %}selected{% endif %}>Alibaba</option>
-        <option value="1688" {% if filter_site == "1688" %}selected{% endif %}>1688</option>
-        <option value="taobao" {% if filter_site == "taobao" %}selected{% endif %}>Taobao</option>
-        <option value="pinduoduo" {% if filter_site == "pinduoduo" %}selected{% endif %}>Pinduoduo</option>
       </select>
     </label>
     <label class="filter-field filter-grow">
@@ -84,8 +72,6 @@
   </h2>
   <p class="hint hint-retail">
     <strong>Опт и розница:</strong> MIC и Alibaba — в первую очередь <strong>опт / B2B</strong> (фабрики и торговые компании).
-    1688 — оптовый рынок внутри Китая; Taobao чаще <strong>розница</strong>.
-    Pinduoduo — <strong>розница</strong>; с браузера часто просят <strong>вход</strong>. Колонка «Сайт» ведёт в поиск по <strong>тому же запросу</strong>, что вверху страницы (не по названию строки).
     Цены в таблице — ориентир с карточки, не договор.
   </p>
   <p class="hint">

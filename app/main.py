@@ -25,10 +25,7 @@ from app.search_pipeline import (
     score_rows,
 )
 from app.scrapers.alibaba_scraper import fetch_suppliers as fetch_alibaba
-from app.scrapers.cn1688 import fetch_suppliers as fetch_1688
 from app.scrapers.mic import fetch_suppliers as fetch_mic
-from app.scrapers.pinduoduo_scraper import fetch_suppliers as fetch_pinduoduo
-from app.scrapers.taobao_scraper import fetch_suppliers as fetch_taobao
 from app.site_meta import footer_context, landing_context, tool_href
 from app.suggestions import suggest as suggest_products
 
@@ -43,12 +40,9 @@ def _page_ctx(request: Request, **kwargs):
 
 
 SITES = [
-    {"id": "all", "label": "Все: MIC + Alibaba + 1688 + Taobao", "active": True},
-    {"id": "pinduoduo", "label": "Pinduoduo.com — крупнейшая розница КНР", "active": True},
+    {"id": "all", "label": "Все: MIC + Alibaba", "active": True},
     {"id": "mic", "label": "Made-in-China.com", "active": True},
     {"id": "alibaba", "label": "Alibaba.com (showroom)", "active": True},
-    {"id": "1688", "label": "1688.com", "active": True},
-    {"id": "taobao", "label": "Taobao.com", "active": True},
 ]
 
 _SITE_IDS = {s["id"] for s in SITES}
@@ -85,7 +79,7 @@ async def _wait_first(
 async def _fetch_raw_rows(
     query_en: str, query_zh: str, site_id: str
 ) -> tuple[list[dict], str | None]:
-    """query_en — MIC/Alibaba; query_zh — 1688, Taobao, Pinduoduo (иероглифы предпочтительнее)."""
+    """query_en — MIC/Alibaba."""
     notes: list[str] = []
     merged: list[dict] = []
     q_intl = (query_en or "").strip()
@@ -95,48 +89,14 @@ async def _fetch_raw_rows(
         merged = await fetch_mic(q_intl, limit=35)
     elif site_id == "alibaba":
         merged = await fetch_alibaba(q_intl, limit=35)
-    elif site_id == "1688":
-        try:
-            merged = await _wait_first(fetch_1688, q_cn, 30, 20.0, retries=1)
-        except asyncio.TimeoutError:
-            raise ValueError(
-                "1688.com: нет ответа за отведённое время (часто недоступен вне Китая)."
-            ) from None
-    elif site_id == "taobao":
-        try:
-            merged = await _wait_first(fetch_taobao, q_cn, 30, 18.0, retries=1)
-        except asyncio.TimeoutError:
-            raise ValueError(
-                "Taobao: нет ответа за отведённое время (часто недоступен вне Китая)."
-            ) from None
-    elif site_id == "pinduoduo":
-        try:
-            merged = await fetch_pinduoduo(q_cn, limit=30, latin_hint=q_intl)
-        except Exception as e:
-            merged = []
-            notes.append(str(e))
     elif site_id == "all":
-        for fn, label, lim, tmo, use_cn in (
-            (fetch_mic, "Made-in-China", 18, None, False),
-            (fetch_alibaba, "Alibaba", 18, None, False),
-            (fetch_1688, "1688", 8, 16.0, True),
-            (fetch_taobao, "Taobao", 8, 14.0, True),
+        for fn, label, lim in (
+            (fetch_mic, "Made-in-China", 18),
+            (fetch_alibaba, "Alibaba", 18),
         ):
-            q = q_cn if use_cn else q_intl
             try:
-                if label in ("1688", "Taobao") and tmo is not None:
-                    part = await _wait_first(fn, q, lim, tmo, retries=1)
-                elif tmo is not None:
-                    part = await asyncio.wait_for(
-                        fn(q, limit=lim), timeout=tmo
-                    )
-                else:
-                    part = await fn(q, limit=lim)
+                part = await fn(q_intl, limit=lim)
                 merged.extend(part)
-            except asyncio.TimeoutError:
-                notes.append(
-                    f"{label}: нет ответа за {int(tmo or 0)} с (часто недоступен вне Китая — остальные площадки уже в таблице)"
-                )
             except Exception as e:
                 notes.append(f"{label}: {e!s}")
     else:
@@ -534,7 +494,7 @@ async def _build_search_block_context(
 ) -> dict:
     site_id = _normalize_site_id(site_id)
     fs = (filter_site or "").strip().lower()
-    if fs not in {"", "mic", "alibaba", "1688", "taobao", "pinduoduo"}:
+    if fs not in {"", "mic", "alibaba"}:
         fs = ""
     name_contains = (name_contains or "").strip()
 
@@ -723,89 +683,6 @@ async def api_translate_query(q: str = Query("", max_length=300)) -> JSONRespons
     en, zh = await prepare_search_queries(raw)
     changed = en != raw or zh != raw
     return JSONResponse({"en": en, "zh": zh, "changed": changed})
-
-
-@app.post("/api/vision-to-query")
-async def api_vision_to_query(image: UploadFile = File(...)) -> JSONResponse:
-    """
-    Берёт загруженное фото, вызывает Google Vision API и возвращает текстовый запрос
-    (label/text) для передачи в существующий поиск.
-    """
-    key = os.environ.get("GOOGLE_VISION_KEY")
-    if not key:
-        return JSONResponse(
-            {"error": "Поиск по фото сейчас недоступен."},
-            status_code=400,
-        )
-
-    # Ограничение, чтобы не убить сервер огромными файлами.
-    raw = await image.read()
-    if len(raw) > 4 * 1024 * 1024:
-        return JSONResponse({"error": "Файл слишком большой (лимит 4MB)."}, status_code=400)
-
-    b64 = base64.b64encode(raw).decode("ascii")
-    url = "https://vision.googleapis.com/v1/images:annotate"
-
-    payload = {
-        "requests": [
-            {
-                "image": {"content": b64},
-                "features": [
-                    {"type": "LABEL_DETECTION", "maxResults": 15},
-                    {"type": "TEXT_DETECTION", "maxResults": 1},
-                    {"type": "WEB_DETECTION", "maxResults": 10},
-                ],
-                # Подсказка для модели (если ключ возвращает русский — всё равно ок).
-                "imageContext": {"languageHints": ["en", "ru"]},
-            }
-        ]
-    }
-
-    logger.warning("vision_request_start size_bytes=%s", len(raw))
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(url, params={"key": key}, json=payload)
-            r.raise_for_status()
-            logger.warning(
-                "vision_request_ok status=%s response_bytes=%s",
-                r.status_code,
-                len(r.text or ""),
-            )
-    except httpx.HTTPStatusError as e:
-        body_preview = (e.response.text or "")[:400].replace("\n", " ")
-        logger.error(
-            "vision_request_http_status_error status=%s body_preview=%s",
-            e.response.status_code,
-            body_preview,
-        )
-        return JSONResponse(
-            {"error": "Не удалось распознать фото. Попробуйте другое изображение или позже."},
-            status_code=502,
-        )
-    except httpx.HTTPError as e:
-        logger.error("vision_request_http_error type=%s detail=%s", type(e).__name__, str(e))
-        return JSONResponse(
-            {"error": "Не удалось распознать фото. Попробуйте позже."},
-            status_code=502,
-        )
-
-    data = r.json()
-    resp = ((data or {}).get("responses") or [{}])[0]
-    labels = resp.get("labelAnnotations") or []
-    query = _build_query_from_vision_response(resp)
-    logger.warning("vision_query_selected query=%s", query)
-
-    query = query[:120] if query else ""
-    if not query:
-        return JSONResponse(
-            {
-                "error": "Не удалось извлечь осмысленный запрос из фото. Попробуйте другое изображение/ракурс.",
-                "debug": {"labels_count": len(labels) if isinstance(labels, list) else 0},
-            },
-            status_code=400,
-        )
-
-    return JSONResponse({"query": query})
 
 
 @app.get("/api/search-result", name="api_search_result")
