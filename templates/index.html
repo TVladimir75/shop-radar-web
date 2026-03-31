@@ -157,18 +157,17 @@
 
   function writeRecent(items) {
     try {
-      localStorage.setItem(RECENT_KEY, JSON.stringify(items.slice(0, 8)));
+      localStorage.setItem(RECENT_KEY, JSON.stringify(items.slice(0, 15)));
     } catch (e) {}
   }
 
   function pushRecent(product, siteId) {
     var q = (product || "").trim();
     if (q.length < 2) return;
-    var sid = siteId || "all";
     var cur = readRecent().filter(function (x) {
-      return !(x.q === q && x.s === sid);
+      return x.q !== q;
     });
-    cur.unshift({ q: q, s: sid });
+    cur.unshift({ q: q, s: siteId || "all" });
     writeRecent(cur);
     renderRecent();
   }

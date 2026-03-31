@@ -535,7 +535,7 @@ async def _build_search_block_context(
             cache_key, site_id, query_used, query_zh
         )
         if from_cache:
-            cache_note = "Показан кэш сырой выдачи (~15 мин), без повторного запроса к площадкам."
+            cache_note = None
 
         scored = score_rows(raw)
         row_count_unfiltered = len(scored)
