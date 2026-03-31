@@ -162,12 +162,13 @@
   }
 
   function pushRecent(product, siteId) {
-    var q = (product || "").trim();
-    if (q.length < 2) return;
+    var raw = (product || "").trim();
+    if (raw.length < 2) return;
+    var key = raw.toLowerCase();
     var cur = readRecent().filter(function (x) {
-      return x.q !== q;
+      return (x.q || "").trim().toLowerCase() !== key;
     });
-    cur.unshift({ q: q, s: siteId || "all" });
+    cur.unshift({ q: raw, s: siteId || "all" });
     writeRecent(cur);
     renderRecent();
   }
